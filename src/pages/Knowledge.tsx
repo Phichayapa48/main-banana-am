@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useNavigationType } from "react-router-dom";
 import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { ArrowLeft, Search, Loader2 } from "lucide-react";
+import { Search, Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import Navbar from "@/components/Navbar"; // ✅ 1. Import Navbar เข้ามา
 
 interface Cultivar {
   id: string;
@@ -19,14 +19,14 @@ interface Cultivar {
 
 const Knowledge = () => {
   const navigate = useNavigate();
-  const navType = useNavigationType(); // ✨ ใช้เช็คทิศทาง Navigation
+  const navType = useNavigationType(); 
 
   const [cultivars, setCultivars] = useState<Cultivar[]>([]);
   const [filteredCultivars, setFilteredCultivars] = useState<Cultivar[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
 
-  // ✨ Logic: รีเฟรชหน้าจอ (F5) ข้อมูลต้องล้างใหม่หมด (ตามโจทย์ที่คุยกันหน้า Index)
+  // ✨ Logic: รีเฟรชหน้าจอ (F5) ข้อมูลต้องล้างใหม่หมด
   useEffect(() => {
     const isReload = (
       window.performance.navigation.type === 1 || 
@@ -34,7 +34,7 @@ const Knowledge = () => {
     );
 
     if (isReload) {
-      setSearch(""); // ล้างค่า Search ถ้ามีการรีเฟรช
+      setSearch(""); 
       window.scrollTo(0, 0);
     }
   }, []);
@@ -81,28 +81,8 @@ const Knowledge = () => {
 
   return (
     <div className="min-h-screen bg-gradient-hero">
-      {/* Navigation Bar */}
-      <nav className="border-b border-border bg-background/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <Button 
-            variant="ghost" 
-            onClick={() => navigate("/")}
-            className="hover:bg-primary/10 transition-colors"
-          >
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            ย้อนกลับ
-          </Button>
-          <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate("/")}>
-            <span className="text-3xl">🍌</span>
-            <h1 className="text-2xl font-bold bg-gradient-primary bg-clip-text text-transparent">
-              Banana Expert
-            </h1>
-          </div>
-          <Button onClick={() => navigate("/auth/login")} className="shadow-md">
-            Sign In
-          </Button>
-        </div>
-      </nav>
+      {/* ✅ 2. เปลี่ยนมาใช้ Navbar ตัวกลางแทน nav เดิม */}
+      <Navbar />
 
       {/* Main Content */}
       <div className="container mx-auto px-4 py-12">
@@ -138,7 +118,7 @@ const Knowledge = () => {
                 <Card
                   key={cultivar.id}
                   className="group overflow-hidden hover:shadow-2xl transition-all duration-500 cursor-pointer flex flex-col border-none rounded-3xl bg-white/50 backdrop-blur-sm"
-                  onClick={() => navigate(`/knowledge/${cultivar.slug}`)}
+                  onClick={() => navigate(`/cultivar/${cultivar.slug}`)} // ✅ ปรับลิงก์ให้ตรงกับที่ใช้หน้า Index
                 >
                   {/* 🛠️ ส่วนแสดงรูปภาพ: ปรับเป็น 1:1 (Square) */}
                   <div className="relative aspect-square bg-muted flex items-center justify-center overflow-hidden">
@@ -159,7 +139,7 @@ const Knowledge = () => {
                     )}
                     {/* Overlay ตอน Hover */}
                     <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
-                       <div className="bg-white/90 text-black px-4 py-2 rounded-full font-bold text-sm">อ่านเพิ่มเติม</div>
+                       <div className="bg-white/90 text-black px-4 py-2 rounded-full font-bold text-sm shadow-sm">อ่านเพิ่มเติม</div>
                     </div>
                   </div>
 
@@ -184,7 +164,7 @@ const Knowledge = () => {
                           .map((char, idx) => (
                             <span
                               key={idx}
-                              className="px-3 py-1 bg-primary/5 text-primary border border-primary/10 rounded-lg text-[10px] font-bold uppercase"
+                              className="px-3 py-1 bg-yellow-100 text-yellow-700 border border-yellow-200 rounded-lg text-[10px] font-bold uppercase"
                             >
                               {char.trim()}
                             </span>
@@ -207,7 +187,7 @@ const Knowledge = () => {
       {/* Footer */}
       <footer className="border-t border-border bg-background/80 backdrop-blur-sm mt-20">
         <div className="container mx-auto px-4 py-8 text-center text-muted-foreground">
-          <p className="text-sm">© 2024 Banana Expert Knowledge Base. All rights reserved.</p>
+          <p className="text-sm">© 2026 Banana Expert Knowledge Base. All rights reserved.</p>
         </div>
       </footer>
     </div>
