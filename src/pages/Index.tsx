@@ -76,40 +76,117 @@ const Index = () => {
     toast.info("ล้างข้อมูลเรียบร้อย เริ่มสแกนใหม่ได้เลยงับ");
   };
 
-  const handleDetect = async () => {
-    if (!selectedImage) {
-      toast.error("กรุณาเลือกรูปภาพก่อนครับพี่");
+const handleDetect = async () => {
+  if (!selectedImage) {
+    toast.error("กรุณาเลือกรูปภาพก่อนครับพี่");
+    return;
+  }
+
+  setDetecting(true);
+
+  try {
+    const formData = new FormData();
+    formData.append("image", selectedImage);
+
+    const backendUrl = import.meta.env.VITE_API_BASE_URL || "/api";
+
+    const response = await fetch(`${backendUrl}/detect`, {
+      method: "POST",
+      body: formData,
+    });
+
+    // ✅ เช็ค HTTP status ก่อน
+    if (!response.ok) {
+      console.error("Backend HTTP Error:", response.status);
+      toast.error("ระบบวิเคราะห์มีปัญหา กรุณาลองใหม่");
       return;
     }
-    setDetecting(true);
-    try {
-      const formData = new FormData();
-      formData.append('image', selectedImage);
-      const backendUrl = import.meta.env.VITE_API_BASE_URL || "/api";
-      const response = await fetch(`${backendUrl}/detect`, { method: "POST", body: formData });
-      const data = await response.json();
 
-      if (data.success) {
-        const aiKey = data.banana_key;
-        const dbSlug = `kluai-${aiKey.toLowerCase().replace(/[_\s-]/g, "")}`;
-        const { data: dbData } = await supabase.from("cultivars").select("*").eq("slug", dbSlug).single();
+    const data = await response.json();
+    console.log("AI response:", data);
 
-        if (dbData) {
-          const finalResult = { cultivar: dbData.thai_name, confidence: data.confidence };
-          setBananaDetails(dbData);
-          setResult(finalResult);
-          sessionStorage.setItem("last_detect_result", JSON.stringify(finalResult));
-          sessionStorage.setItem("last_banana_details", JSON.stringify(dbData));
-          sessionStorage.setItem("last_preview_url", previewUrl);
-          toast.success("วิเคราะห์กล้วยเรียบร้อย! 🍌");
-        }
+    // ❌ AI fail
+    if (!data?.success) {
+      if (data?.reason === "no_banana_detected") {
+        toast.error("ไม่พบกล้วยในภาพ กรุณาลองใหม่");
+      } else if (data?.reason === "invalid_image") {
+        toast.error("ไฟล์ภาพไม่ถูกต้อง");
+      } else if (data?.reason === "all_models_failed") {
+        toast.error("ระบบไม่สามารถวิเคราะห์ได้ กรุณาลองใหม่");
+      } else {
+        toast.error("เกิดข้อผิดพลาดจากระบบ AI");
       }
-    } catch (error) {
-      toast.error("เกิดข้อผิดพลาดในการเชื่อมต่อ");
-    } finally {
-      setDetecting(false);
+      return;
     }
-  };
+
+    // ✅ ตรวจ banana_key
+    if (!data?.banana_key) {
+      toast.error("ไม่พบรหัสสายพันธุ์จาก AI");
+      return;
+    }
+
+    const aiKey = String(data.banana_key);
+
+    const dbSlug = `kluai-${aiKey
+      .toLowerCase()
+      .replace(/[_\s-]/g, "")}`;
+
+    console.log("Query slug:", dbSlug);
+
+    const { data: dbData, error } = await supabase
+      .from("cultivars")
+      .select("*")
+      .eq("slug", dbSlug)
+      .maybeSingle();
+
+    if (error) {
+      console.error("Supabase error:", error);
+      toast.error("เกิดข้อผิดพลาดในการดึงข้อมูลฐานข้อมูล");
+      return;
+    }
+
+    if (!dbData) {
+      toast.error("ไม่พบข้อมูลสายพันธุ์ในฐานข้อมูล");
+      return;
+    }
+
+    const confidenceValue =
+      typeof data.confidence === "number"
+        ? data.confidence
+        : 0;
+
+    const finalResult = {
+      cultivar: dbData.thai_name,
+      confidence: confidenceValue,
+    };
+
+    setBananaDetails(dbData);
+    setResult(finalResult);
+
+    sessionStorage.setItem(
+      "last_detect_result",
+      JSON.stringify(finalResult)
+    );
+    sessionStorage.setItem(
+      "last_banana_details",
+      JSON.stringify(dbData)
+    );
+    sessionStorage.setItem(
+      "last_preview_url",
+      previewUrl
+    );
+
+    toast.success("วิเคราะห์กล้วยเรียบร้อย! 🍌");
+
+  } catch (err) {
+    console.error("Detect error:", err);
+    toast.error("เกิดข้อผิดพลาดในการเชื่อมต่อ");
+  } finally {
+    setDetecting(false);
+  }
+};
+
+
 
   return (
     <div className="min-h-screen bg-gradient-hero">
