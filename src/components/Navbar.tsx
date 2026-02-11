@@ -34,13 +34,13 @@ const Navbar = () => {
       <div className="container mx-auto px-4 py-3 flex items-center justify-between">
         
         <div className="flex items-center gap-2">
-          {/* ✨ ปุ่มย้อนกลับ: ใช้ส้ม Dashboard เวลา Hover */}
+          {/* ✨ ปุ่มย้อนกลับ: สีส้มตามสไตล์ปุ่ม Logout ใน Dashboard (Screenshot 3 & 5) */}
           {location.pathname !== "/" && (
             <Button 
               variant="ghost" 
               size="icon" 
               onClick={() => navigate(-1)} 
-              className="mr-1 rounded-xl text-slate-500 hover:text-orange-600 hover:bg-orange-50 transition-colors"
+              className="mr-1 rounded-xl bg-orange-600 text-white hover:bg-orange-700 transition-all shadow-sm"
             >
               <ArrowLeft className="w-5 h-5" />
             </Button>
@@ -55,21 +55,21 @@ const Navbar = () => {
         </div>
 
         <div className="flex items-center gap-1 md:gap-2">
-          {/* ✨ Knowledge: สีดำเดิมๆ เวลา Active เปลี่ยนเป็นส้ม Dashboard */}
+          {/* ✨ Knowledge: เป็นก้อนสีส้ม Orange-600 ตัวหนังสือขาว (เป๊ะตาม Screenshot 5) */}
           <NavLink 
             to="/knowledge" 
-            className="hidden md:flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-slate-900 transition-all hover:bg-slate-100"
-            activeClassName="bg-orange-500 text-white shadow-md" // แก้เป็นส้มสว่างตัวหนังสือขาวให้อ่านง่าย
+            className="hidden md:flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold bg-orange-600 text-white transition-all hover:bg-orange-700 shadow-sm"
+            activeClassName="bg-orange-700 ring-2 ring-orange-200" 
           >
             <Book className="w-4 h-4" />
             Knowledge
           </NavLink>
 
-          {/* ✨ Marketplace: แก้จากเหลืองเป็นส้มตามรูป Dashboard เป๊ะๆ */}
+          {/* ✨ Marketplace: เป็นก้อนสีส้ม Orange-600 ตัวหนังสือขาว (เป๊ะตาม Screenshot 5) */}
           <NavLink 
             to="/market" 
-            className="hidden md:flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-slate-900 transition-all hover:bg-slate-100"
-            activeClassName="bg-orange-500 text-white shadow-md" // ส้มตะโกนแบบในรูปเลย!
+            className="hidden md:flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold bg-orange-600 text-white transition-all hover:bg-orange-700 shadow-sm"
+            activeClassName="bg-orange-700 ring-2 ring-orange-200"
           >
             <Store className="w-4 h-4" />
             Marketplace
@@ -82,14 +82,15 @@ const Navbar = () => {
                 onClick={() => navigate("/dashboard")} 
                 className="gap-2 rounded-xl border-slate-300 bg-white text-slate-900 hover:bg-orange-600 hover:text-white font-bold shadow-sm transition-all"
               >
-                <User className="w-4 h-4 text-orange-500" /> Profile
+                <User className="w-4 h-4 text-orange-500 hover:text-white" /> Profile
               </Button>
               
+              {/* ✨ ปุ่มออกจากระบบใน Navbar: ใช้สีส้ม Orange-600 ตัวหนังสือขาว (เลียนแบบ Screenshot 5) */}
               <Button 
                 variant="ghost" 
                 size="icon" 
                 onClick={handleSignOut} 
-                className="rounded-xl text-slate-500 hover:text-orange-600 hover:bg-orange-50 transition-colors"
+                className="rounded-xl bg-orange-600 text-white hover:bg-orange-700 transition-all shadow-sm"
               >
                 <LogOut className="w-4 h-4" />
               </Button>
@@ -97,7 +98,7 @@ const Navbar = () => {
           ) : (
             <Button 
               onClick={() => navigate("/auth/login")}
-              className="bg-orange-500 hover:bg-orange-600 text-white font-black rounded-xl px-6 shadow-md transition-all active:scale-95"
+              className="bg-orange-600 hover:bg-orange-700 text-white font-black rounded-xl px-6 shadow-md transition-all active:scale-95"
             >
               Sign In
             </Button>
