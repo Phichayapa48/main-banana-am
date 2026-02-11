@@ -173,7 +173,7 @@ const FarmDashboard = () => {
 
           <Button variant="ghost" onClick={handleLogout}>
             <LogOut className="w-4 h-4 mr-2" />
-            Logout
+            ออกจากระบบ
           </Button>
         </div>
       </nav>
