@@ -10,7 +10,7 @@ import { useNavigate, useNavigationType } from "react-router-dom";
 import { toast } from "sonner";
 import heroImage from "@/assets/hero-bananas.jpg";
 import { supabase } from "@/integrations/supabase/client";
-import Navbar from "@/components/Navbar"; // ✅ นำเข้า Navbar ตัวใหม่
+import Navbar from "@/components/Navbar"; 
 
 const Index = () => {
   const navigate = useNavigate();
@@ -113,7 +113,6 @@ const Index = () => {
 
   return (
     <div className="min-h-screen bg-gradient-hero">
-      {/* ✅ 1. Navbar ตัวใหม่มาแล้ว */}
       <Navbar />
 
       {/* 🟢 Hero Header Section */}
@@ -176,7 +175,7 @@ const Index = () => {
                 ) : (
                   <div className="py-12">
                     <Upload className="w-16 h-16 mx-auto text-muted-foreground mb-4 group-hover:text-primary transition-colors" />
-                    <p className="text-lg font-medium mb-2">Click to upload image</p>
+                    <p className="text-lg font-medium mb-2 text-gray-700">Click to upload image</p>
                     <p className="text-sm text-muted-foreground">PNG, JPG up to 10MB</p>
                   </div>
                 )}
@@ -375,7 +374,7 @@ const Index = () => {
         </div>
       </footer>
 
-      {/* ✨ Tailwind Custom Animation Styles (Inline) */}
+      {/* ✨ Tailwind Custom Animation Styles */}
       <style>{`
         @keyframes float {
           0%, 100% { transform: translateY(0) rotate(-12deg); }
@@ -383,6 +382,10 @@ const Index = () => {
         }
         .animate-float {
           animation: float 6s ease-in-out infinite;
+        }
+        @keyframes pulse {
+          0%, 100% { opacity: 0.5; transform: scale(1); }
+          50% { opacity: 0.8; transform: scale(1.1); }
         }
       `}</style>
     </div>
