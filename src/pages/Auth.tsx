@@ -9,7 +9,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { z } from "zod";
 import { useEffect } from "react";
 
-
 /* ---------------- SCHEMA ---------------- */
 
 const loginSchema = z.object({
@@ -49,7 +48,7 @@ const Auth = () => {
     checkSession();
   }, [navigate]);
 
-  /* ---------------- SUBMIT ---------------- */
+  /* ---------------- SUBMIT (จุดที่แก้ไข) ---------------- */
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -57,6 +56,7 @@ const Auth = () => {
 
     try {
       if (isLogin) {
+        // 1. ตรวจสอบรูปแบบ Email/Password ก่อนส่ง
         const validation = loginSchema.safeParse({
           email: formData.email,
           password: formData.password,
@@ -64,23 +64,41 @@ const Auth = () => {
 
         if (!validation.success) {
           toast.error(validation.error.errors[0].message);
+          setLoading(false);
           return;
         }
 
+        // 2. พยายาม Login
         const { error } = await supabase.auth.signInWithPassword({
           email: formData.email,
           password: formData.password,
         });
 
-        if (error) throw error;
+        // 3. ดักจับ Error เพื่อแจ้งเตือนให้ตรงจุด
+        if (error) {
+          console.error("Auth Error:", error);
+          
+          if (error.message.includes("Invalid login credentials")) {
+            toast.error("อีเมลหรือรหัสผ่านไม่ถูกต้อง กรุณาเช็คใหม่อีกครั้งน้าบ");
+          } else if (error.message.includes("Email not confirmed")) {
+            toast.error("อีเมลนี้ยังไม่ได้ยืนยัน! อย่าลืมเช็คในเมลหรือปิด Confirm Email ใน Supabase นะ");
+          } else {
+            toast.error(error.message); // กรณี Error อื่นๆ เช่น Network หรือ Server
+          }
+          setLoading(false);
+          return;
+        }
 
         toast.success("Welcome back!");
         navigate("/dashboard", { replace: true });
+
       } else {
+        // ส่วนของ Sign Up
         const validation = signupSchema.safeParse(formData);
 
         if (!validation.success) {
           toast.error(validation.error.errors[0].message);
+          setLoading(false);
           return;
         }
 
@@ -94,13 +112,21 @@ const Auth = () => {
           },
         });
 
-        if (error) throw error;
+        if (error) {
+          if (error.message.includes("User already registered")) {
+            toast.error("อีเมลนี้ถูกใช้ไปแล้วพี่ชาย ลองเปลี่ยนเมลหรือกด Login ดูนะ");
+          } else {
+            toast.error(error.message);
+          }
+          setLoading(false);
+          return;
+        }
 
         toast.success("Account created! Please sign in.");
         setIsLogin(true);
       }
     } catch (err: any) {
-      toast.error(err.message || "Authentication failed");
+      toast.error(err.message || "Something went wrong");
     } finally {
       setLoading(false);
     }
