@@ -22,6 +22,11 @@ type OrderStatus =
 
 interface OrderData {
   id: string;
+  order_number?: string;
+  receiver_name?: string | null;
+  receiver_phone?: string | null;
+  carrier?: string | null;
+
   user_id: string;
   status: OrderStatus;
   total_price: number;
@@ -33,6 +38,7 @@ interface OrderData {
   confirmed_at: string | null;
   shipped_at: string | null;
   delivered_at: string | null;
+
   products: {
     id: string;
     name: string;
@@ -40,11 +46,13 @@ interface OrderData {
     unit: string;
     image_url: string | null;
   } | null;
+
   profiles: {
     full_name: string;
     phone: string | null;
   } | null;
-  is_reservation?: boolean; 
+
+  is_reservation?: boolean;
 }
 
 const OrderDetail = () => {
@@ -54,6 +62,8 @@ const OrderDetail = () => {
   const [updating, setUpdating] = useState(false);
   const [order, setOrder] = useState<OrderData | null>(null);
   const [trackingNumber, setTrackingNumber] = useState("");
+  const [carrier, setCarrier] = useState("");
+
 
   useEffect(() => {
     if (id) loadOrder();
@@ -86,6 +96,10 @@ const OrderDetail = () => {
         .from("orders")
         .select(`
           id,
+          order_number,
+          receiver_name,
+          receiver_phone,
+          carrier,
           user_id,
           status,
           total_price,
@@ -100,12 +114,13 @@ const OrderDetail = () => {
           products (id, name, price_per_unit, unit, image_url),
           profiles:user_id (full_name, phone)
         `)
+
         .eq("id", id)
         .maybeSingle();
-
       if (orderData) {
         setOrder(orderData as unknown as OrderData);
         setTrackingNumber(orderData.tracking_number || "");
+        setCarrier(orderData.carrier || ""); 
       } else {
         const { data: resData } = await supabase
           .from("reservations")
@@ -116,9 +131,13 @@ const OrderDetail = () => {
             note,
             status,
             created_at,
+            receiver_name,
+            receiver_phone,
+            delivery_address,
             products:product_id (id, name, price_per_unit, unit, image_url),
             profiles:user_id (full_name, phone)
           `)
+
           .eq("id", id)
           .maybeSingle();
 
@@ -128,7 +147,9 @@ const OrderDetail = () => {
             user_id: resData.user_id,
             status: resData.status as OrderStatus,
             quantity: resData.quantity,
-            delivery_address: resData.note || "N/A", 
+            delivery_address: resData.delivery_address || "รอยืนยันที่อยู่",
+            receiver_name: resData.receiver_name,
+            receiver_phone: resData.receiver_phone,
             delivery_notes: null,
             total_price: (resData.products?.price_per_unit || 0) * resData.quantity,
             created_at: resData.created_at,
@@ -176,18 +197,27 @@ const OrderDetail = () => {
       const updates: Record<string, unknown> = { status: newStatus };
 
       if (newStatus === "confirmed") {
-        updates.confirmed_at = new Date().toISOString();
+
+  updates.confirmed_at = new Date().toISOString();
+
       } else if (newStatus === "shipped") {
         if (!trackingNumber.trim()) {
           toast.error("Please enter a tracking number");
           setUpdating(false);
           return;
         }
+        if (!carrier.trim()) { 
+          toast.error("Please enter carrier");
+          setUpdating(false);
+          return;
+        }
         updates.shipped_at = new Date().toISOString();
         updates.tracking_number = trackingNumber.trim();
+        updates.carrier = carrier.trim(); 
       } else if (newStatus === "delivered") {
         updates.delivered_at = new Date().toISOString();
       }
+
 
       const { error } = await supabase
         .from("orders")
@@ -196,8 +226,8 @@ const OrderDetail = () => {
 
       if (error) throw error;
 
-      setOrder({ ...order, ...updates } as OrderData);
       toast.success(`Order ${newStatus}`);
+      await loadOrder();
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Failed to update order";
       toast.error(message);
@@ -259,10 +289,9 @@ const OrderDetail = () => {
         <div className="max-w-3xl mx-auto space-y-6">
           <Card className="p-6">
             <div className="flex items-start justify-between mb-4">
-              <div>
-                <p className="text-sm text-muted-foreground">หมายเลขการจอง</p>
-                <p className="font-mono">{order.id}</p>
-              </div>
+              <div> <h3 className="font-semibold"> {order.order_number ? "หมายเลขออเดอร์" : "หมายเลขการจอง"} </h3>
+              <p className="font-mono"> {order.order_number ?? order.id} </p></div>
+
               <span className={`px-3 py-1 rounded-full text-sm ${getStatusColor(order.status)}`}>
                 {order.status}
               </span>
@@ -278,8 +307,9 @@ const OrderDetail = () => {
               <h3 className="font-semibold">ข้อมูลลูกค้า</h3>
             </div>
             <div className="space-y-2">
-              <p><strong>ชื่อ-นามสกุล:</strong> {(order.profiles as any)?.full_name || "N/A"}</p>
-              <p><strong>เบอร์โทรศัพท์:</strong> {(order.profiles as any)?.phone || "N/A"}</p>
+              <p><strong>ชื่อผู้รับ:</strong>{" "}{order.receiver_name ?? order.profiles?.full_name ?? "N/A"}</p>
+              <p><strong>เบอร์โทรศัพท์:</strong>{" "}{order.receiver_phone ?? order.profiles?.phone ?? "N/A"}</p>
+
             </div>
           </Card>
 
@@ -293,6 +323,9 @@ const OrderDetail = () => {
               {order.delivery_notes && (
                 <p><strong>หมายเหตุ:</strong> {order.delivery_notes}</p>
               )}
+              {order.carrier && (
+                <p><strong>บริษัทขนส่ง:</strong> {order.carrier}</p>
+            )}
               {order.tracking_number && (
                 <p><strong>หมายเลขติดตามพัสดุ:</strong> {order.tracking_number}</p>
               )}
@@ -343,6 +376,14 @@ const OrderDetail = () => {
               {order.status === "confirmed" && (
                 <div className="space-y-4">
                   <div className="space-y-2">
+                    <Label>บริษัทขนส่ง</Label>
+                    <Input
+                      value={carrier}
+                      onChange={(e) => setCarrier(e.target.value)}
+                      placeholder="Flash / Kerry / Thailand Post"
+                    />
+                  </div>
+                  <div className="space-y-2">
                     <Label htmlFor="tracking">หมายเลขติดตามพัสดุ</Label>
                     <Input
                       id="tracking"
@@ -369,9 +410,10 @@ const OrderDetail = () => {
                   className="w-full"
                 >
                   {updating && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                  ยืนยันว่าจัดส่งถึงแล้ว
+                  ยืนยันว่าจัดส่งสำเร็จ
                 </Button>
               )}
+
             </Card>
           )}
         </div>
