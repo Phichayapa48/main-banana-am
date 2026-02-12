@@ -174,7 +174,7 @@ const UpdateProfile = () => {
     }
   };
 
-  /* ---------- SAVE EMAIL ---------- */
+  /* ---------- SAVE EMAIL (จุดที่แก้ไข) ---------- */
 
   const saveEmail = async () => {
     if (!emailForm.email.trim()) {
@@ -191,7 +191,12 @@ const UpdateProfile = () => {
 
       if (error) throw error;
 
-      toast.success("กรุณาตรวจสอบอีเมลเพื่อยืนยัน");
+      // เพิ่มแจ้งเตือนแบบ Pop-up (Toast) ที่มีรายละเอียดชัดเจนขึ้น
+      toast.success("บันทึกคำขอเปลี่ยนอีเมลเรียบร้อย!", {
+        description: "โปรดตรวจสอบกล่องจดหมายของอีเมลใหม่เพื่อกดยืนยันการเปลี่ยนแปลง",
+        duration: 6000,
+      });
+
     } catch (e: any) {
       toast.error(e.message || "แก้ไขอีเมลไม่ได้");
     } finally {
