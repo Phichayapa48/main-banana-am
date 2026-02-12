@@ -56,6 +56,7 @@ interface Reservation {
 interface Order {
   id: string;
   status: OrderStatus;
+  order_number: string;
   quantity: number;
   tracking_number: string | null;
   created_at: string;
@@ -71,14 +72,34 @@ const FarmOrders = () => {
   const [tab, setTab] = useState<
   "pending" | "confirmed" | "shipping" | "done" | "expired"
 >("pending");
-
-
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [shippingId, setShippingId] = useState<string | null>(null);
   const [tracking, setTracking] = useState("");
   const [carrier, setCarrier] = useState("");
   const [search, setSearch] = useState("");
+  const today = new Date().toISOString().split("T")[0];
+
+const todayShipping = useMemo(
+  () =>
+    orders.filter(
+      (o) =>
+        o.status === "confirmed" &&
+        (o as any).shipping_date === today
+    ),
+  [orders]
+);
+
+const otherConfirmed = useMemo(
+  () =>
+    orders.filter(
+      (o) =>
+        o.status === "confirmed" &&
+        (o as any).shipping_date !== today
+    ),
+  [orders]
+);
+
 
 
   
@@ -130,10 +151,12 @@ const FarmOrders = () => {
           .from("orders")
           .select(`
             id,
+            order_number,
             status,
             quantity,
             tracking_number,
             created_at,
+            shipping_date,
             products!inner ( name, farm_id ),
             profiles:user_id ( full_name )
           `)
@@ -235,7 +258,9 @@ loadData(); // ✅ ใช้อันนี้
 
   return data.filter((item) =>
     item.products?.name?.toLowerCase().includes(keyword) ||
-    item.profiles?.full_name?.toLowerCase().includes(keyword)
+    item.profiles?.full_name?.toLowerCase().includes(keyword) ||
+    item.order_number?.toLowerCase().includes(keyword)
+
   );
 };
 
@@ -334,32 +359,67 @@ loadData(); // ✅ ใช้อันนี้
 )}
 
 
-        
+    {tab === "confirmed" && (
+  <div className="space-y-8">
 
-        {tab === "confirmed" && (
-          <OrderTable
-            data={filterData(confirmed)}
-            actions={(o) => (
-              <Button onClick={() => setShippingId(o.id)}>
-                <Truck className="w-4 h-4 mr-1" />
-                จัดส่งสินค้า
-              </Button>
-            )}
-          />
+    {/* ---------- ส่งวันนี้ ---------- */}
+    <div>
+      <h2 className="font-semibold text-lg mb-2">
+        🚚 ต้องจัดส่งวันนี้
+      </h2>
+
+      <OrderTable
+        data={filterData(todayShipping)}
+        actions={(o) => (
+          <Button onClick={() => setShippingId(o.id)}>
+            <Truck className="w-4 h-4 mr-1" />
+            จัดส่งสินค้า
+          </Button>
         )}
+      />
+    </div>
 
-        {tab === "shipping" && (
-          <OrderTable data={filterData(shipping)} />
+
+
+
+    {/* ---------- ออเดอร์อื่น ---------- */}
+    <div>
+      <h2 className="font-semibold text-lg mb-2">
+        📦 ออเดอร์ที่รอจัดส่ง
+      </h2>
+
+      <OrderTable
+        data={filterData(otherConfirmed)}
+        actions={(o) => (
+          <Button onClick={() => setShippingId(o.id)}>
+            <Truck className="w-4 h-4 mr-1" />
+            จัดส่งสินค้า
+          </Button>
         )}
+      />
+    </div>
 
-        {tab === "done" && (
-          <OrderTable data={filterData(done)} />
-        )}
-
-        {tab === "expired" && (
-          <OrderTable data={filterData(expired)} />
-
+  </div>
 )}
+
+      {tab === "shipping" && (
+                <OrderTable
+                  data={filterData(shipping)}
+                />
+              )}
+      
+      {tab === "done" && (
+          <div className="space-y-8">
+            <OrderTable data={filterData(done)} />
+          </div>
+        )}
+
+      {tab === "expired" && (
+        <OrderTable
+          data={filterData(expired)}
+        />
+      )}
+
       </div>
 
 
@@ -409,10 +469,10 @@ loadData(); // ✅ ใช้อันนี้
       </div>
     </Card>
   </div>
-)}
- </div>  
-  );       
-}; 
+)}   
+      </div>  
+        );       
+      }; 
 
 
 
@@ -439,6 +499,7 @@ const OrderTable = ({
     <Table>
       <TableHeader>
         <TableRow>
+          <TableHead>หมายเลขรายการ</TableHead>
           <TableHead>ลูกค้า</TableHead>
           <TableHead>สินค้า</TableHead>
           <TableHead>จำนวน</TableHead>
@@ -451,6 +512,7 @@ const OrderTable = ({
       <TableBody>
         {data.map((o) => (
           <TableRow key={o.id}>
+            <TableCell className="font-medium">{o.order_number ?? o.id.slice(0, 8)}</TableCell>
             <TableCell>{o.profiles?.full_name}</TableCell>
             <TableCell>{o.products?.name}</TableCell>
             <TableCell>{o.quantity}</TableCell>
