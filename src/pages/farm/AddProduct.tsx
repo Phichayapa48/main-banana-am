@@ -284,7 +284,7 @@ const AddProduct = () => {
           </div>
 
           <div>
-            <Label>หน่วย</Label>
+            <Label>หน่วย (เช่น kg, ชิ้น, หวี) </Label>
             <Input
               value={form.unit}
               onChange={(e) => setForm({ ...form, unit: e.target.value })}

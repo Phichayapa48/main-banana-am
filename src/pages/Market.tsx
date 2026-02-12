@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom"; 
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Search, Star, MapPin, X } from "lucide-react"; 
 import { toast } from "sonner";
@@ -16,10 +17,10 @@ import {
 
 /* ---------- Types ---------- */
 interface FarmProfile {
+  id: string;
   farm_name: string;
   farm_location: string;
   rating: number | null;
-  profiles?: any; 
 }
 
 interface Product {
@@ -36,25 +37,6 @@ interface Product {
   farm: FarmProfile | null;
 }
 
-/* ---------- Helper Function ---------- */
-const getTimeAgo = (dateString: string | null | undefined) => {
-  if (!dateString) return "ไม่ระบุสถานะ";
-  const now = new Date();
-  const lastSeen = new Date(dateString);
-  
-  // ตรวจสอบว่าเป็น Invalid Date หรือไม่
-  if (isNaN(lastSeen.getTime())) return "ไม่ระบุสถานะ";
-
-  const diffInMs = now.getTime() - lastSeen.getTime();
-  const diffInMinutes = Math.floor(diffInMs / (1000 * 60));
-  const diffInHours = Math.floor(diffInMs / (1000 * 60 * 60));
-
-  if (diffInMinutes < 5) return "ออนไลน์ตอนนี้";
-  if (diffInMinutes < 60) return `ออนไลน์เมื่อ ${diffInMinutes} นาทีที่แล้ว`;
-  if (diffInHours < 24) return `ออนไลน์เมื่อ ${diffInHours} ชม. ที่แล้ว`;
-  return `ออนไลน์เมื่อ ${Math.floor(diffInHours / 24)} วันที่แล้ว`;
-};
-
 /* ---------- Component ---------- */
 const Market = () => {
   const navigate = useNavigate();
@@ -66,17 +48,22 @@ const Market = () => {
   
   const [search, setSearch] = useState(initialSearch);
   const [typeFilter, setTypeFilter] = useState<"all" | "fruit" | "shoot">("all");
+  const [topFarms, setTopFarms] = useState<FarmProfile[]>([]);
+
 
   const translateType = (type: string) => {
     const types: Record<string, string> = {
       fruit: "ผล",
       shoot: "หน่อ",
+      "ผล": "ผล",
+      "หน่อ": "หน่อ"
     };
     return types[type] || type;
   };
 
   useEffect(() => {
     loadProducts();
+    loadTopFarms();
   }, []);
 
   useEffect(() => {
@@ -88,7 +75,6 @@ const Market = () => {
   const loadProducts = async () => {
     try {
       setLoading(true);
-      // ✨ ใช้ user_id เชื่อมไปยัง profiles เพื่อดู last_seen (1 เมล 2 Role)
       const { data, error } = await supabase
         .from("products")
         .select(`
@@ -105,43 +91,52 @@ const Market = () => {
           farm: farm_profiles (
             farm_name,
             farm_location,
-            rating,
-            profiles: user_id (
-              last_seen
-            )
+            rating
           )
         `)
         .eq("is_active", true);
 
       if (error) throw error;
-      setProducts(data as any ?? []);
+      setProducts(data ?? []);
     } catch (err) {
-      console.error("Load Fail, trying Fallback:", err);
-      const { data: fallbackData } = await supabase
-        .from("products")
-        .select(`
-          *,
-          farm: farm_profiles (
-            farm_name,
-            farm_location,
-            rating
-          )
-        `)
-        .eq("is_active", true);
-      
-      if (fallbackData) setProducts(fallbackData as any);
-      toast.error("แสดงสินค้าแบบออฟไลน์ (ดึงข้อมูลออนไลน์ไม่ได้)");
+      console.error(err);
+      toast.error("โหลดสินค้าไม่สำเร็จ");
     } finally {
       setLoading(false);
     }
   };
 
+  const loadTopFarms = async () => {
+  try {
+    const { data, error } = await supabase
+      .from("farm_profiles")
+      .select("id, farm_name, farm_location, rating")
+      .not("rating", "is", null)
+      .order("rating", { ascending: false })
+      .limit(3);
+
+    if (error) throw error;
+    setTopFarms(data ?? []);
+  } catch (err) {
+    console.error(err);
+  }
+};
+
+
+  /* -----------------------------------------------------------
+      ✨ จุดที่แก้ไข: กรองสินค้าที่ของหมด (ดักจับทุก Data Type)
+      ----------------------------------------------------------- */
   const filteredProducts = products.filter((p) => {
     const keyword = search.toLowerCase();
-    const matchName = p.name?.toLowerCase().includes(keyword);
-    const matchFarm = p.farm?.farm_name?.toLowerCase().includes(keyword) ?? false;
+    const matchName = p.name.toLowerCase().includes(keyword);
+    const matchFarm = p.farm?.farm_name.toLowerCase().includes(keyword) ?? false;
     const matchType = typeFilter === "all" || p.product_type === typeFilter;
-    return (matchName || matchFarm) && matchType;
+    
+    // บังคับให้เป็น Number ก่อนเช็ค เพื่อป้องกันค่าว่างหรือ String "0" หลุดมา
+    // กรองเอาเฉพาะที่มีสต็อกมากกว่า 0 เท่านั้น
+    const hasStock = p.available_quantity !== null && Number(p.available_quantity) > 0;
+
+    return (matchName || matchFarm) && matchType && hasStock;
   });
 
   return (
@@ -154,6 +149,47 @@ const Market = () => {
           <p className="text-muted-foreground">เชื่อมต่อการจองผลผลิตกล้วยกับฟาร์มโดยตรงทั่วประเทศไทย</p>
         </div>
 
+        {/* ⭐ Top 3 Farms */}
+{topFarms.length > 0 && (
+  <div className="max-w-4xl mx-auto mb-10">
+    <h3 className="text-2xl font-bold mb-4 text-gray-800">
+      ⭐ ฟาร์มยอดนิยม
+    </h3>
+
+    <div className="grid md:grid-cols-3 gap-4">
+      {topFarms.map((farm, index) => (
+        <Card
+          key={index}
+          className="p-4 cursor-pointer hover:shadow-lg transition"
+          onClick={() => navigate(`/farm/${farm.id}`)}
+        >
+          <h4 className="font-bold text-lg">{farm.farm_name}</h4>
+
+          <p className="text-sm text-muted-foreground flex items-center gap-1 mt-1">
+            <MapPin className="w-3 h-3" />
+            {farm.farm_location}
+          </p>
+
+          <div className="flex items-center gap-1 mt-2">
+            <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
+            <span className="font-bold">
+              {farm.rating?.toFixed(1)}
+            </span>
+          </div>
+
+          <p className="text-xs text-muted-foreground mt-2">
+            อันดับที่ {index + 1}
+          </p>
+        </Card>
+      ))}
+    </div>
+  </div>
+)}
+
+
+
+
+        {/* Filters */}
         <div className="max-w-4xl mx-auto mb-8 flex flex-col sm:flex-row gap-4">
           <div className="flex-1 relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
@@ -166,7 +202,7 @@ const Market = () => {
             {search && (
               <button 
                 onClick={() => setSearch("")}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -191,99 +227,80 @@ const Market = () => {
         {loading ? (
           <div className="text-center py-20 text-muted-foreground">กำลังโหลดสินค้า...</div>
         ) : filteredProducts.length === 0 ? (
-          <div className="text-center py-20 text-muted-foreground">ไม่พบสินค้าที่คุณต้องการ</div>
+          <div className="text-center py-20 text-muted-foreground">ไม่พบสินค้าที่มีจำหน่ายในขณะนี้</div>
         ) : (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredProducts.map((p) => {
-              // ✨ แก้ไข Logic การดึงค่า last_seen ให้แม่นยำขึ้น
-              const farmProfiles = p.farm?.profiles;
-              const lastSeenVal = Array.isArray(farmProfiles) 
-                ? farmProfiles[0]?.last_seen 
-                : farmProfiles?.last_seen;
-
-              const isOnline = lastSeenVal && 
-                (new Date().getTime() - new Date(lastSeenVal).getTime()) < 300000;
-
-              return (
-                <Card
-                  key={p.id}
-                  className="group cursor-pointer hover:shadow-lg transition-all duration-300 border-none rounded-2xl overflow-hidden bg-white"
-                  onClick={() => navigate(`/market/product/${p.id}`)}
-                >
-                  <div className="aspect-video bg-muted flex items-center justify-center relative overflow-hidden">
-                    {p.image_url ? (
-                      <img 
+            {filteredProducts.map((p) => (
+              <Card
+                key={p.id}
+                className="group cursor-pointer hover:shadow-lg transition-all duration-300 border-none rounded-2xl overflow-hidden bg-white"
+                onClick={() => navigate(`/market/product/${p.id}`)}
+              >
+                <div className="aspect-video bg-muted flex items-center justify-center relative overflow-hidden">
+                   {p.image_url ? (
+                     <img 
                         src={p.image_url} 
                         alt={p.name} 
                         className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" 
                       />
-                    ) : (
-                      <span className="text-5xl">🍌</span>
+                   ) : (
+                     <span className="text-5xl">🍌</span>
+                   )}
+                </div>
+
+                <div className="p-5">
+                  <div className="flex justify-between items-start mb-2">
+                    <div>
+                      <h3 className="font-bold text-lg text-gray-800">{p.name}</h3>
+                      <div className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
+                        <MapPin className="w-3 h-3" />
+                        <span
+                          className="hover:underline hover:text-primary cursor-pointer transition-colors"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(`/farm/${p.farm_id}`);
+                          }}
+                        >
+                          {p.farm?.farm_name ?? "ไม่ระบุชื่อฟาร์ม"}
+                        </span>
+                      </div>
+                    </div>
+
+                    {p.farm?.rating != null && (
+                      <div className="flex items-center gap-1 bg-yellow-100 px-2 py-1 rounded-lg">
+                        <Star className="w-3.5 h-3.5 text-yellow-600 fill-yellow-600" />
+                        <span className="text-xs font-bold text-yellow-700">
+                          {p.farm.rating.toFixed(1)}
+                        </span>
+                      </div>
                     )}
                   </div>
 
-                  <div className="p-5">
-                    <div className="flex justify-between items-start mb-2">
-                      <div>
-                        <h3 className="font-bold text-lg text-gray-800">{p.name}</h3>
-                        <div className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
-                          <MapPin className="w-3 h-3" />
-                          <span
-                            className="hover:underline hover:text-primary cursor-pointer transition-colors"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              navigate(`/farm/${p.farm_id}`);
-                            }}
-                          >
-                            {p.farm?.farm_name ?? "ไม่ระบุชื่อฟาร์ม"}
-                          </span>
-                        </div>
-                      </div>
+                  <p className="text-sm text-muted-foreground line-clamp-2 mb-4 h-10">
+                    {p.description || "ผลผลิตคุณภาพสดใหม่จากเกษตรกรไทย"}
+                  </p>
 
-                      {p.farm?.rating != null && (
-                        <div className="flex items-center gap-1 bg-yellow-100 px-2 py-1 rounded-lg">
-                          <Star className="w-3.5 h-3.5 text-yellow-600 fill-yellow-600" />
-                          <span className="text-xs font-bold text-yellow-700">
-                            {p.farm.rating.toFixed(1)}
-                          </span>
-                        </div>
-                      )}
+                  <div className="flex justify-between items-end border-t pt-4">
+                    <div>
+                      <p className="text-xl font-black text-primary">
+                        ฿{p.price_per_unit.toLocaleString()}
+                        <span className="text-sm font-medium text-muted-foreground ml-1">/{p.unit}</span>
+                      </p>
+                      <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-tighter mt-1">
+                        สต็อกคงเหลือ: {p.available_quantity} {p.unit}
+                      </p>
                     </div>
-
-                    <p className="text-sm text-muted-foreground line-clamp-2 mb-2 h-10">
-                      {p.description || "ผลผลิตคุณภาพสดใหม่จากเกษตรกรไทย"}
-                    </p>
-
-                    {/* ✨ สถานะออนไลน์ */}
-                    <div className="flex items-center gap-1.5 mb-4">
-                      <div className={`w-2 h-2 rounded-full ${isOnline ? "bg-green-500 animate-pulse" : "bg-gray-300"}`} />
-                      <span className="text-[11px] font-medium text-slate-500">
-                        {getTimeAgo(lastSeenVal)}
-                      </span>
-                    </div>
-
-                    <div className="flex justify-between items-end border-t pt-4">
-                      <div>
-                        <p className="text-xl font-black text-primary">
-                          ฿{p.price_per_unit.toLocaleString()}
-                          <span className="text-sm font-medium text-muted-foreground ml-1">/{p.unit}</span>
-                        </p>
-                        <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-tighter mt-1">
-                          สต็อก: {p.available_quantity} {p.unit}
-                        </p>
-                      </div>
-                      <span className="text-xs px-3 py-1 rounded-full bg-slate-100 font-bold text-slate-600">
-                        {translateType(p.product_type)}
-                      </span>
-                    </div>
-
-                    <p className="text-[10px] text-slate-400 mt-3 font-medium">
-                      วันที่เก็บเกี่ยว: {new Date(p.harvest_date).toLocaleDateString('th-TH')}
-                    </p>
+                    <span className="text-xs px-3 py-1 rounded-full bg-slate-100 font-bold text-slate-600">
+                      {translateType(p.product_type)}
+                    </span>
                   </div>
-                </Card>
-              );
-            })}
+
+                  <p className="text-[10px] text-slate-400 mt-3 font-medium">
+                    วันที่เก็บเกี่ยว: {new Date(p.harvest_date).toLocaleDateString('th-TH')}
+                  </p>
+                </div>
+              </Card>
+            ))}
           </div>
         )}
       </div>

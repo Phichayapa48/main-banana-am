@@ -63,6 +63,10 @@ const ProductDetail = () => {
   const [receiverName, setReceiverName] = useState("");
   const [receiverPhone, setReceiverPhone] = useState("");
 
+  const [savedFullName, setSavedFullName] = useState<string | null>(null);
+  const [savedPhone, setSavedPhone] = useState<string | null>(null);
+
+
 
 
   /* ---------- Load Product ---------- */
@@ -114,36 +118,39 @@ const ProductDetail = () => {
   /* ---------- Load User Address ---------- */
 
   const loadUserAddress = async () => {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-    if (!user) {
-      toast.error("กรุณาเข้าสู่ระบบ");
-      return false;
-    }
+  if (!user) {
+    toast.error("กรุณาเข้าสู่ระบบ");
+    return false;
+  }
 
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("address")
-      .eq("id", user.id)
-      .maybeSingle();
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("full_name, phone, address")
+    .eq("id", user.id)
+    .maybeSingle();
 
-    if (error) {
-      toast.error("โหลดที่อยู่ไม่สำเร็จ");
-      return false;
-    }
+  if (error) {
+    toast.error("โหลดที่อยู่ไม่สำเร็จ");
+    return false;
+  }
 
-    if (data?.address) {
-      setSavedAddress(data.address);
-      setAddressType("saved");
-    } else {
-      setSavedAddress(null);
-      setAddressType("new");
-    }
+  if (data?.address) {
+    setSavedFullName(data.full_name || null);
+    setSavedPhone(data.phone || null);
+    setSavedAddress(data.address);
+    setAddressType("saved");
+  } else {
+    setSavedAddress(null);
+    setAddressType("new");
+  }
 
-    return true;
-  };
+  return true;
+};
+
 
   /* ---------- Reserve ---------- */
 
@@ -363,10 +370,13 @@ const ProductDetail = () => {
               </div>
 
               {addressType === "saved" && savedAddress && (
-                <Card className="p-3 text-sm bg-muted">
-                  {savedAddress}
+                <Card className="p-3 text-sm bg-muted space-y-1">
+                  <p>ชื่อผู้รับ : {savedFullName || "-"}</p>
+                  <p>เบอร์โทร : {savedPhone || "-"}</p>
+                  <p>ที่อยู่ : {savedAddress}</p>
                 </Card>
               )}
+
 
               <div className="flex items-center space-x-2 mt-2">
                 <RadioGroupItem value="new" id="new" />

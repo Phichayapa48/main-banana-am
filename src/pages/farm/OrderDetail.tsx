@@ -26,6 +26,7 @@ interface OrderData {
   receiver_name?: string | null;
   receiver_phone?: string | null;
   carrier?: string | null;
+  expiry_date?: string | null;
 
   user_id: string;
   status: OrderStatus;
@@ -111,6 +112,7 @@ const OrderDetail = () => {
           confirmed_at,
           shipped_at,
           delivered_at,
+          expiry_date,
           products (id, name, price_per_unit, unit, image_url),
           profiles:user_id (full_name, phone)
         `)
@@ -134,6 +136,7 @@ const OrderDetail = () => {
             receiver_name,
             receiver_phone,
             delivery_address,
+            expiry_date,
             products:product_id (id, name, price_per_unit, unit, image_url),
             profiles:user_id (full_name, phone)
           `)
@@ -151,6 +154,7 @@ const OrderDetail = () => {
             receiver_name: resData.receiver_name,
             receiver_phone: resData.receiver_phone,
             delivery_notes: null,
+            expiry_date: resData.expiry_date,
             total_price: (resData.products?.price_per_unit || 0) * resData.quantity,
             created_at: resData.created_at,
             tracking_number: null,
@@ -298,6 +302,9 @@ const OrderDetail = () => {
             </div>
             <p className="text-sm text-muted-foreground">
               วันที่จอง {new Date(order.created_at).toLocaleString()}
+            </p>
+            <p className="text-sm text-muted-foreground">
+              วันที่ต้องจัดส่ง {new Date(order.expiry_date).toLocaleString()}
             </p>
           </Card>
 
