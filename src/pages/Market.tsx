@@ -41,6 +41,10 @@ const getTimeAgo = (dateString: string | null | undefined) => {
   if (!dateString) return "ไม่ระบุสถานะ";
   const now = new Date();
   const lastSeen = new Date(dateString);
+  
+  // ตรวจสอบว่าเป็น Invalid Date หรือไม่
+  if (isNaN(lastSeen.getTime())) return "ไม่ระบุสถานะ";
+
   const diffInMs = now.getTime() - lastSeen.getTime();
   const diffInMinutes = Math.floor(diffInMs / (1000 * 60));
   const diffInHours = Math.floor(diffInMs / (1000 * 60 * 60));
@@ -84,7 +88,7 @@ const Market = () => {
   const loadProducts = async () => {
     try {
       setLoading(true);
-      // ✨ แก้ไขจุดนี้: ใช้ user_id ในการเชื่อม profiles ตามโครงสร้าง 1 เมล 2 Role
+      // ✨ ใช้ user_id เชื่อมไปยัง profiles เพื่อดู last_seen (1 เมล 2 Role)
       const { data, error } = await supabase
         .from("products")
         .select(`
@@ -113,7 +117,6 @@ const Market = () => {
       setProducts(data as any ?? []);
     } catch (err) {
       console.error("Load Fail, trying Fallback:", err);
-      // 🛡️ กันพัง: ถ้าดึงข้อมูลออนไลน์ไม่ได้ ให้ดึงแค่ข้อมูลสินค้ามาโชว์ก่อน
       const { data: fallbackData } = await supabase
         .from("products")
         .select(`
@@ -192,9 +195,11 @@ const Market = () => {
         ) : (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredProducts.map((p) => {
-              const lastSeenVal = Array.isArray(p.farm?.profiles) 
-                ? p.farm?.profiles[0]?.last_seen 
-                : p.farm?.profiles?.last_seen;
+              // ✨ แก้ไข Logic การดึงค่า last_seen ให้แม่นยำขึ้น
+              const farmProfiles = p.farm?.profiles;
+              const lastSeenVal = Array.isArray(farmProfiles) 
+                ? farmProfiles[0]?.last_seen 
+                : farmProfiles?.last_seen;
 
               const isOnline = lastSeenVal && 
                 (new Date().getTime() - new Date(lastSeenVal).getTime()) < 300000;
@@ -249,6 +254,7 @@ const Market = () => {
                       {p.description || "ผลผลิตคุณภาพสดใหม่จากเกษตรกรไทย"}
                     </p>
 
+                    {/* ✨ สถานะออนไลน์ */}
                     <div className="flex items-center gap-1.5 mb-4">
                       <div className={`w-2 h-2 rounded-full ${isOnline ? "bg-green-500 animate-pulse" : "bg-gray-300"}`} />
                       <span className="text-[11px] font-medium text-slate-500">
