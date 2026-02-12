@@ -48,7 +48,7 @@ const Navbar = () => {
     let interval: NodeJS.Timeout;
 
     if (session?.user) {
-      // อัปเดตทันทีเมื่อเปลี่ยนหน้า (เพราะ Navbar โหลดใหม่หรือ Re-render)
+      // อัปเดตทันทีเมื่อเปลี่ยนหน้า
       updateLastSeen(session.user.id);
 
       interval = setInterval(() => {
@@ -59,12 +59,22 @@ const Navbar = () => {
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [session, location.pathname]); // ✨ อัปเดตทุกครั้งที่เปลี่ยนหน้า (location.pathname)
+  }, [session, location.pathname]); 
 
+  // ✨ จุดที่แก้ไข: บันทึกเวลาวินาทีสุดท้ายก่อน Logout
   const handleSignOut = async () => {
-    await supabase.auth.signOut();
-    toast.success("ออกจากระบบเรียบร้อย");
-    navigate("/");
+    try {
+      if (session?.user) {
+        // อัปเดตเวลาครั้งสุดท้ายก่อนออกจากระบบจริงๆ
+        await updateLastSeen(session.user.id);
+      }
+    } catch (error) {
+      console.error("Error updating status before signout:", error);
+    } finally {
+      await supabase.auth.signOut();
+      toast.success("ออกจากระบบเรียบร้อย");
+      navigate("/");
+    }
   };
 
   return (
