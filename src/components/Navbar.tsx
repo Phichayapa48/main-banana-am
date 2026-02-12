@@ -12,16 +12,43 @@ const Navbar = () => {
   const [session, setSession] = useState<any>(null);
 
   useEffect(() => {
+    // ดึง Session ครั้งแรก
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
+      if (session?.user) updateLastSeen(session.user.id);
     });
 
+    // ตรวจสอบการเปลี่ยนแปลง Login/Logout
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
+      if (session?.user) updateLastSeen(session.user.id);
     });
 
     return () => subscription.unsubscribe();
   }, []);
+
+  // ✨ ฟังก์ชันอัปเดตสถานะออนไลน์ (last_seen)
+  const updateLastSeen = async (userId: string) => {
+    try {
+      await supabase
+        .from('profiles')
+        .update({ last_seen: new Date().toISOString() })
+        .eq('id', userId);
+    } catch (error) {
+      console.error("Error updating last seen:", error);
+    }
+  };
+
+  // ✨ ตั้งเวลาอัปเดตทุก 4 นาที (เผื่อไว้ให้ทัน 5 นาทีในหน้า Market)
+  useEffect(() => {
+    if (session?.user) {
+      const interval = setInterval(() => {
+        updateLastSeen(session.user.id);
+      }, 4 * 60 * 1000); // 4 minutes
+      
+      return () => clearInterval(interval);
+    }
+  }, [session]);
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
@@ -77,13 +104,11 @@ const Navbar = () => {
 
           {session ? (
             <div className="flex items-center gap-2 border-l border-slate-200 pl-4 ml-2">
-              {/* ✨ ปุ่ม Profile: พี่ใส่ group ไว้ที่นี่ */}
               <Button 
                 variant="outline" 
                 onClick={() => navigate("/dashboard")} 
                 className="group gap-2 rounded-xl border-slate-300 bg-white text-slate-900 hover:bg-orange-600 hover:text-white font-bold shadow-sm transition-all"
               >
-                {/* ✨ ไอคอน User: ปกติส้ม แต่พอปุ่มโดน Hover (group-hover) ให้เปลี่ยนเป็นขาว! */}
                 <User className="w-4 h-4 text-orange-500 group-hover:text-white transition-colors" /> 
                 Profile
               </Button>
