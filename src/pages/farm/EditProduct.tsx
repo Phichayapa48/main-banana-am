@@ -84,93 +84,52 @@ const EditProduct = () => {
     loadProduct();
   }, [id, navigate]);
 
-  /* ================= 2. DELETE OLD IMAGES HELPER ================= */
-  const deleteOldImages = async (productId: string) => {
-    try {
-      const { data: oldImages } = await supabase
-        .from("product_images")
-        .select("image_path")
-        .eq("product_id", productId);
-
-      if (oldImages && oldImages.length > 0) {
-        const paths = oldImages.map((img) => img.image_path);
-        await supabase.storage.from("product-images").remove(paths);
-        await supabase
-          .from("product_images")
-          .delete()
-          .eq("product_id", productId);
-      }
-    } catch (error) {
-      console.error("Error deleting old images:", error);
-    }
-  };
-
-  /* ================= 3. SUBMIT (UPDATE + REPLACE IMAGE) ================= */
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!id || !farmId) return;
+  e.preventDefault();
+  if (!id) return;
 
-    // ✨ เช็คชื่อสินค้าซ้ำอีกรอบ (Double Check)
-    const isNumericOnly = /^[0-9]+$/.test(form.name.trim());
-    if (isNumericOnly) {
-      toast.error("กรุณาระบุชื่อสินค้าให้ถูกต้อง เช่น กล้วยนาก");
-      return;
+  setSubmitting(true);
+
+  try {
+    let imagePath: string | null = null;
+
+    // 1️⃣ upload ถ้ามีไฟล์ใหม่
+    if (files.length > 0) {
+      const file = files[0];
+      imagePath = `${farmId}/${id}/${crypto.randomUUID()}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("product-images")
+        .upload(imagePath, file, { upsert: true });
+
+      if (uploadError) throw uploadError;
     }
-    
-    setSubmitting(true);
 
-    try {
-      let finalImageUrl = form.image_url;
+    // 2️⃣ เรียก RPC
+    const { error } = await supabase.rpc("update_product_secure", {
+      p_product_id: id,
+      p_name: form.name,
+      p_description: form.description || null,
+      p_product_type: form.product_type,
+      p_price: Number(form.price_per_unit),
+      p_quantity: Number(form.available_quantity),
+      p_unit: form.unit,
+      p_harvest_date: form.harvest_date,
+      p_expiry_date: form.expiry_date || null,
+      p_image_path: imagePath,
+    });
 
-      if (files.length > 0) {
-        await deleteOldImages(id);
-        const file = files[0];
-        const newPath = `${farmId}/${id}/${crypto.randomUUID()}`;
+    if (error) throw error;
 
-        const { error: uploadError } = await supabase.storage
-          .from("product-images")
-          .upload(newPath, file);
+    toast.success("แก้ไขข้อมูลสินค้าเรียบร้อย");
+    navigate("/farm/products", { replace: true });
 
-        if (uploadError) throw uploadError;
-
-        const { data: urlData } = supabase.storage
-          .from("product-images")
-          .getPublicUrl(newPath);
-        
-        finalImageUrl = urlData.publicUrl;
-
-        await supabase.from("product_images").insert({
-          product_id: id,
-          image_path: newPath,
-        });
-      }
-
-      const { error: updateError } = await supabase
-        .from("products")
-        .update({
-          name: form.name.trim(),
-          description: form.description || null,
-          product_type: form.product_type,
-          price_per_unit: Number(form.price_per_unit),
-          available_quantity: Number(form.available_quantity),
-          unit: form.unit,
-          harvest_date: form.harvest_date,
-          expiry_date: form.expiry_date || null,
-          image_url: finalImageUrl,
-        })
-        .eq("id", id);
-
-      if (updateError) throw updateError;
-
-      toast.success("แก้ไขข้อมูลสินค้าเรียบร้อย");
-      navigate("/farm/products", { replace: true });
-
-    } catch (err: any) {
-      toast.error(err.message || "เกิดข้อผิดพลาด");
-    } finally {
-      setSubmitting(false);
-    }
-  };
+  } catch (err: any) {
+    toast.error(err.message || "เกิดข้อผิดพลาด");
+  } finally {
+    setSubmitting(false);
+  }
+};
 
   if (loading) {
     return (

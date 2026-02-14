@@ -118,6 +118,7 @@ const OrderDetail = () => {
         `)
 
         .eq("id", id)
+        .eq("farm_id", farm.id)
         .maybeSingle();
       if (orderData) {
         setOrder(orderData as unknown as OrderData);
@@ -194,7 +195,7 @@ const OrderDetail = () => {
         });
         if (error) throw error;
         toast.success("Order confirmed and moved to orders");
-        loadOrder(); 
+        navigate("/farm/orders");
         return;
       }
 
@@ -304,7 +305,11 @@ const OrderDetail = () => {
               วันที่จอง {new Date(order.created_at).toLocaleString()}
             </p>
             <p className="text-sm text-muted-foreground">
-              วันที่ต้องจัดส่ง {new Date(order.expiry_date).toLocaleString()}
+              {order.expiry_date && (
+              <p className="text-sm text-muted-foreground">
+                วันที่ต้องจัดส่ง {new Date(order.expiry_date).toLocaleString()}
+              </p>
+            )}
             </p>
           </Card>
 

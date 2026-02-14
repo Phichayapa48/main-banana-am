@@ -39,31 +39,23 @@ const FarmPublic = () => {
   }, [farmId]);
 
   const loadFarm = async () => {
-    try {
-      setLoading(true);
+  try {
+    setLoading(true);
 
-      // farm info
-      const { data: farmData } = await supabase
-        .from("farm_profiles")
-        .select("*")
-        .eq("id", farmId)
-        .single();
+    const { data, error } = await supabase.rpc(
+      "get_public_farm_with_products",
+      { p_farm_id: farmId }
+    );
 
-      setFarm(farmData);
+    if (error) throw error;
 
-      // farm products
-      const { data: productsData } = await supabase
-        .from("products")
-        .select("*")
-        .eq("farm_id", farmId)
-        .eq("is_active", true)
-        .order("created_at", { ascending: false });
+    setFarm(data.farm);
+    setProducts(data.products || []);
 
-      setProducts(productsData || []);
-    } finally {
-      setLoading(false);
-    }
-  };
+  } finally {
+    setLoading(false);
+  }
+};
 
   if (loading) {
     return (

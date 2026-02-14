@@ -107,32 +107,21 @@ const FarmDashboard = () => {
 
       setFarm(farmData);
 
-      // ดึงสินค้าทั้งหมด
-      const { data: productsData } = await supabase
-        .from("products")
-        .select("*")
-        .eq("farm_id", farmData.id)
-        .order("created_at", { ascending: false });
+      const { data: statsData, error: statsError } =
+  await supabase.rpc("get_farm_dashboard_stats");
 
-      setProducts(productsData || []);
+if (statsError) throw statsError;
 
-      // ดึงออเดอร์ทั้งหมด
-      const { data: orders } = await supabase
-        .from("orders")
-        .select("id, status")
-        .eq("farm_id", farmData.id);
+setStats({
+  activeProducts: statsData.activeProducts,
+  totalOrders: statsData.totalOrders,
+  pendingOrders: statsData.pendingOrders,
+});
 
-      // ✨ แก้ไขจุดนี้: ดึงจำนวนการจอง (Reservations) ของฟาร์มเราแทนการ Filter status pending จาก orders
-      const { count: reservationCount } = await supabase
-        .from("reservations")
-        .select("id, products!inner(farm_id)", { count: 'exact', head: true })
-        .eq("products.farm_id", farmData.id);
-
-      setStats({
-        activeProducts: productsData?.filter(p => p.is_active !== false).length ?? 0,
-        totalOrders: orders?.length ?? 0,
-        pendingOrders: reservationCount ?? 0, // ✨ ใช้เลขจากการจองจริง
-      });
+setFarm(prev => prev ? {
+  ...prev,
+  total_sales: statsData.totalSales
+} : prev);
 
     } catch (err) {
       console.error(err);

@@ -98,67 +98,65 @@ const ManageProducts = () => {
   };
 
   const toggleActive = async (product: Product) => {
-    try {
-      const { error } = await supabase
-        .from("products")
-        .update({ is_active: !product.is_active })
-        .eq("id", product.id)
-        .eq("farm_id", farmId);
+  try {
+    const { data, error } = await supabase.rpc(
+      "toggle_product_active",
+      { p_product_id: product.id }
+    );
 
-      if (error) throw error;
+    if (error) throw error;
 
-      setProducts((prev) =>
-        prev.map((p) =>
-          p.id === product.id ? { ...p, is_active: !p.is_active } : p
-        )
-      );
+    setProducts((prev) =>
+      prev.map((p) =>
+        p.id === product.id ? { ...p, is_active: data } : p
+      )
+    );
 
-      toast.success("อัปเดตสถานะสินค้าเรียบร้อย");
-    } catch (e: any) {
-      toast.error(e.message || "อัปเดตสถานะไม่สำเร็จ กรุณาลองใหม่");
-    }
-  };
+    toast.success("อัปเดตสถานะสินค้าเรียบร้อย");
+  } catch (e: any) {
+    toast.error(e.message || "อัปเดตสถานะไม่สำเร็จ");
+  }
+};
 
   const handleDelete = async (productId: string) => {
-    if (!confirm("ยืนยันการลบสินค้าหรือไม่?")) return;
+  if (!confirm("ยืนยันการลบสินค้าหรือไม่?")) return;
 
-    try {
-      setLoading(true);
+  try {
+    setLoading(true);
 
-      const { data: images } = await supabase
-        .from("product_images")
-        .select("image_path")
-        .eq("product_id", productId);
+    // 1. ดึง image path ไว้ก่อน
+    const { data: images } = await supabase
+      .from("product_images")
+      .select("image_path")
+      .eq("product_id", productId);
 
-      if (images && images.length > 0) {
-        const pathsToDelete = images.map(img => img.image_path);
-        
-        const { error: storageError } = await supabase.storage
-          .from("product-images")
-          .remove(pathsToDelete);
+    // 2. ลบใน DB ผ่าน RPC
+    const { error } = await supabase.rpc(
+      "delete_product_owned",
+      { p_product_id: productId }
+    );
 
-        if (storageError) {
-          console.error("Storage delete error:", storageError);
-        }
-      }
+    if (error) throw error;
 
-      const { error: dbError } = await supabase
-        .from("products")
-        .delete()
-        .eq("id", productId)
-        .eq("farm_id", farmId);
+    // 3. ลบ storage หลัง DB สำเร็จ
+    if (images && images.length > 0) {
+      const pathsToDelete = images.map(i => i.image_path);
 
-      if (dbError) throw dbError;
-
-      setProducts((prev) => prev.filter((p) => p.id !== productId));
-      
-      toast.success("ลบสินค้าและคืนพื้นที่รูปภาพเรียบร้อยแล้ว");
-    } catch (e: any) {
-      toast.error(e.message || "ไม่สามารถลบสินค้าได้ กรุณาลองใหม่");
-    } finally {
-      setLoading(false);
+      await supabase.storage
+        .from("product-images")
+        .remove(pathsToDelete);
     }
-  };
+
+    setProducts(prev => prev.filter(p => p.id !== productId));
+
+    toast.success("ลบสินค้าเรียบร้อย");
+
+  } catch (e: any) {
+    toast.error(e.message || "ลบสินค้าไม่สำเร็จ");
+  } finally {
+    setLoading(false);
+  }
+};
 
   if (loading) {
     return (

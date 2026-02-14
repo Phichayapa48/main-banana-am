@@ -192,18 +192,17 @@ loadData(); // ✅ ใช้อันนี้
 
 
   const cancelReservation = async (id: string) => {
-    const { error } = await supabase
-      .from("reservations")
-      .delete()
-      .eq("id", id);
+  const { error } = await supabase.rpc("cancel_reservation", {
+    reservation_id_input: id,
+  });
 
-    if (error) {
-      toast.error(error.message);
-      return;
-    }
+  if (error) {
+    toast.error(error.message);
+    return;
+  }
 
-    loadData();
-  };
+  loadData();
+};
 
   const updateOrder = async (
     id: string,

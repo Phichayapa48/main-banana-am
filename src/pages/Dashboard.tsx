@@ -122,28 +122,21 @@ const Dashboard = () => {
   };
 
   const handleUpgradeToFarm = async () => {
-    try {
-      // 1. เพิ่ม Role ให้ User
-      await supabase.from("user_roles").insert({
-        user_id: user.id,
-        role: "farm",
-      });
+  try {
+    const { error } = await supabase.rpc("upgrade_to_farm");
 
-      // ✨ จุดที่แก้ไข: สร้างฟาร์มโดยให้ ID ฟาร์มกับ User_id เป็นเลขเดียวกัน
-      await supabase.from("farm_profiles").insert({
-        id: user.id, // ให้ ID ฟาร์มเป็นเลขเดียวกับคนเล่น
-        user_id: user.id,
-        farm_name: "ฟาร์มของฉัน",
-        farm_location: "ประเทศไทย",
-      });
-
-      setRole("farm");
-      toast.success("อัปเกรดเป็นบัญชีฟาร์มเรียบร้อย");
-      navigate("/farm/dashboard");
-    } catch {
-      toast.error("การอัปเกรดล้มเหลว");
+    if (error) {
+      toast.error(error.message);
+      return;
     }
-  };
+
+    toast.success("อัปเกรดเป็นบัญชีฟาร์มเรียบร้อย");
+    navigate("/farm/dashboard");
+
+  } catch {
+    toast.error("การอัปเกรดล้มเหลว");
+  }
+};
 
   /* ✨ จุดที่แก้ไข: เปลี่ยนข้อความสถานะเป็นภาษาไทย */
   const statusLabels: Record<string, string> = {

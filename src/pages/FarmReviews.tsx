@@ -19,12 +19,13 @@ interface ReviewRow {
   rating: number;
   comment: string | null;
   created_at: string;
-  product_id: string | null;
-  user_id: string | null;
+  products: {
+    name: string;
+  } | null;
+  profiles: {
+    full_name: string | null;
+  } | null;
 }
-
-type ProductMap = Record<string, string>;
-type ProfileMap = Record<string, string>;
 
 /* ---------- Component ---------- */
 
@@ -34,8 +35,6 @@ const FarmReviews = () => {
 
   const [farm, setFarm] = useState<FarmInfo | null>(null);
   const [reviews, setReviews] = useState<ReviewRow[]>([]);
-  const [productMap, setProductMap] = useState<ProductMap>({});
-  const [profileMap, setProfileMap] = useState<ProfileMap>({});
   const [loading, setLoading] = useState(true);
 
   /* ---------- Load Data ---------- */
@@ -52,20 +51,32 @@ const FarmReviews = () => {
         .from("farm_profiles")
         .select("farm_name, rating, total_reviews")
         .eq("id", farmId)
-        .single();
-
+        .maybeSingle();
+      
       if (farmError) {
         console.error("Farm load error:", farmError);
         return;
       }
 
-      setFarm(farmData);
+      if (!farmData) {
+        navigate("/not-found");
+        return;
+      }
 
+      setFarm(farmData);
+    
       /* ---------- REVIEWS ---------- */
 
       const { data: reviewData, error: reviewError } = await supabase
         .from("reviews")
-        .select("id, rating, comment, created_at, product_id, user_id")
+        .select(`
+          id,
+          rating,
+          comment,
+          created_at,
+          products ( name ),
+          profiles ( full_name )
+        `)
         .eq("farm_id", farmId)
         .order("created_at", { ascending: false });
 
@@ -74,104 +85,42 @@ const FarmReviews = () => {
         return;
       }
 
-      const reviewsSafe = reviewData ?? [];
-      setReviews(reviewsSafe);
+      setReviews(reviewData ?? []);
 
-      /* ---------- LOAD PRODUCTS ---------- */
-
-      const productIds = [
-        ...new Set(
-          reviewsSafe
-            .map((r) => r.product_id)
-            .filter((id): id is string => Boolean(id))
-        ),
-      ];
-
-      if (productIds.length > 0) {
-        const { data: products } = await supabase
-          .from("products")
-          .select("id, name")
-          .in("id", productIds);
-
-        const map: ProductMap = {};
-        products?.forEach((p) => {
-          map[p.id] = p.name;
-        });
-
-        setProductMap(map);
+      } catch (err) {
+        console.error("Unexpected error:", err);
+      } finally {
+        setLoading(false);
       }
 
-      /* ---------- LOAD PROFILES ---------- */
-
-      const userIds = [
-        ...new Set(
-          reviewsSafe
-            .map((r) => r.user_id)
-            .filter((id): id is string => Boolean(id))
-        ),
-      ];
-
-      if (userIds.length > 0) {
-        const { data: profiles } = await supabase
-          .from("profiles")
-          .select("id, full_name")
-          .in("id", userIds);
-
-        const map: ProfileMap = {};
-        profiles?.forEach((p) => {
-          map[p.id] = p.full_name ?? "Anonymous";
-        });
-
-        setProfileMap(map);
-      }
-    } catch (err) {
-      console.error("Unexpected error:", err);
-    } finally {
-      setLoading(false);
-    }
-  }, [farmId]);
-
+    }, [farmId, navigate]);
+          
+    
   /* ---------- Auth + Init ---------- */
 
   useEffect(() => {
-    const init = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
-      if (session && farmId) {
-        loadData();
-      }
-    };
-
-    init();
-
-    const { data: listener } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        if (session && farmId) {
-          loadData();
-        }
-      }
-    );
-
-    return () => {
-      listener.subscription.unsubscribe();
-    };
-  }, [farmId, loadData]);
+  if (farmId) {
+    loadData();
+  }
+}, [farmId, loadData]);
 
   /* ---------- Helpers ---------- */
 
   const formatDate = (date?: string | null) =>
     date ? new Date(date).toLocaleDateString("th-TH") : "-";
 
-  const renderStars = (rating: number) => (
+  const renderStars = (rating: number) => {
+  const safeRating = Math.max(0, Math.min(5, Math.floor(rating)));
+
+  return (
     <div className="flex items-center gap-1 text-yellow-500">
-      {Array.from({ length: rating }).map((_, i) => (
+      {Array.from({ length: safeRating }).map((_, i) => (
         <Star key={i} className="w-4 h-4 fill-current" />
       ))}
     </div>
   );
-
+};
+    
   /* ---------- Loading ---------- */
 
   if (loading) {
@@ -213,7 +162,9 @@ const FarmReviews = () => {
           <div className="flex items-center gap-2 text-yellow-500">
             <Star className="w-6 h-6 fill-current" />
             <span className="text-xl font-bold">
-              {farm?.rating?.toFixed(1) ?? "0.0"}
+              {typeof farm?.rating === "number"
+                ? farm.rating.toFixed(1)
+                : "0.0"}
             </span>
           </div>
         </Card>
@@ -229,9 +180,7 @@ const FarmReviews = () => {
               <Card key={r.id} className="p-6 space-y-3">
                 {/* Product */}
                 <p className="font-semibold text-lg">
-                  {r.product_id
-                    ? productMap[r.product_id] ?? "สินค้า"
-                    : "สินค้า"}
+                  {r.products?.name ?? "สินค้า"}
                 </p>
 
                 {/* Stars */}
@@ -245,9 +194,7 @@ const FarmReviews = () => {
                 {/* Footer */}
                 <div className="text-xs text-muted-foreground flex justify-between">
                   <span>
-                    {r.user_id
-                      ? profileMap[r.user_id] ?? "Anonymous"
-                      : "Anonymous"}
+                    {r.profiles?.full_name ?? "Anonymous"}
                   </span>
 
                   <span>{formatDate(r.created_at)}</span>

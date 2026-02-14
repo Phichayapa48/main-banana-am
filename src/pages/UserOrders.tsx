@@ -113,6 +113,7 @@ interface ReviewedOrder {
   } | null;
 }
 
+
 interface ToReviewOrder {
   id: string;
   user_id: string;
@@ -124,9 +125,17 @@ interface ToReviewOrder {
   carrier: string | null;
   tracking_number: string | null;
 
+  total_price: number;
+  order_number: string;
+  receiver_name: string | null;
+  receiver_phone: string | null;
+  delivery_address: string | null;
+  delivery_notes: string | null;
+
   products: {
     name: string;
     product_type: string;
+    harvest_date: string | null;
 
     farm_profiles?: {
       farm_name: string;
@@ -146,7 +155,7 @@ const UserOrders = () => {
   /* REVIEW */
   const [openReview, setOpenReview] = useState(false);
   const [selectedOrder, setSelectedOrder] =
-    useState<ShippingOrder | null>(null);
+    useState<ToReviewOrder | null>(null);
   const [rating, setRating] = useState(5);
   const [comment, setComment] = useState("");
   const formatDate = (d?: string | null) =>
@@ -346,96 +355,47 @@ const UserOrders = () => {
 
   const cancelReservation = async (reservationId: string) => {
   try {
+    const { error } = await supabase.rpc("cancel_reservation", {
+      p_reservation_id: reservationId,
+    });
 
-    // ⭐ 1. ดึงข้อมูล reservation
-    const { data: reservation, error: fetchError } = await supabase
-      .from("reservations")
-      .select("product_id, quantity")
-      .eq("id", reservationId)
-      .single();
-
-    if (fetchError) throw fetchError;
-
-    // ⭐ 2. คืน stock ให้สินค้า
-    const { error: stockError } = await supabase.rpc(
-  "increase_product_quantity",
-  {
-    product_id_input: reservation.product_id,
-    qty_input: reservation.quantity,
-  }
-);
-
-
-    if (stockError) throw stockError;
-
-    // ⭐ 3. ลบ reservation
-    const { error: deleteError } = await supabase
-      .from("reservations")
-      .delete()
-      .eq("id", reservationId);
-
-    if (deleteError) throw deleteError;
+    if (error) throw error;
 
     toast.success("ยกเลิกการจองแล้ว");
-
     await loadAll();
-
-  } catch (e) {
+  } catch (e: any) {
     console.error(e);
-    toast.error("ยกเลิกการจองไม่ได้");
+    toast.error(e.message || "ยกเลิกการจองไม่ได้");
   }
 };
+
 
   const submitReview = async () => {
   if (!selectedOrder) return;
 
-  if (!selectedOrder.farm_id) {
-    toast.error("ไม่พบข้อมูลฟาร์มของออเดอร์นี้");
-    return;
+  try {
+    const { error } = await supabase.rpc("insert_review", {
+      p_order_id: selectedOrder.id,
+      p_rating: rating,
+      p_comment: comment,
+    });
+
+    if (error) throw error;
+
+    toast.success("ขอบคุณสำหรับรีวิว 🌟");
+
+    setOpenReview(false);
+    setSelectedOrder(null);
+    setRating(5);
+    setComment("");
+
+    await loadAll();
+  } catch (e: any) {
+    console.error(e);
+    toast.error(e.message || "รีวิวไม่สำเร็จ");
   }
-
-    try {
-      /* ป้องกันรีวิวซ้ำ */
-      const { data: exist } = await supabase
-        .from("reviews")
-        .select("id")
-        .eq("order_id", selectedOrder.id)
-        .maybeSingle();
-
-      if (exist) {
-        toast.error("ออเดอร์นี้รีวิวแล้ว");
-        return;
-      }
-
-      const { error } = await supabase.from("reviews").insert({
-        order_id: selectedOrder.id,
-        product_id: selectedOrder.product_id,
-        farm_id: selectedOrder.farm_id,
-        user_id: selectedOrder.user_id,
-        rating,
-        comment,
-      });
-
-      if (error) throw error;
-
-      await supabase
-        .from("orders")
-        .update({ status: "reviewed" })
-        .eq("id", selectedOrder.id);
-
-      toast.success("ขอบคุณสำหรับรีวิว 🌟");
-
-      setOpenReview(false);
-      setSelectedOrder(null);
-      setRating(5);
-      setComment("");
-      await loadAll();
-    } catch (e: any) {
-      console.error("Cancel reservation error:", e);
-      toast.error(e.message || "ยกเลิกการจองไม่ได้");
-    }
-
-  };
+};
+  
   
 
   /* ---------- LOADING ---------- */
@@ -574,7 +534,6 @@ const UserOrders = () => {
             </Card>
           )}
 
-
          {/* ---------- PENDING ---------- */}
           {tab === "pending" && (
             <Card className="p-6 space-y-4">
@@ -632,8 +591,8 @@ const UserOrders = () => {
           {/* ---------- TO REVIEW ---------- */}
           {tab === "review" && (
             <Card className="p-6 space-y-4">
-              {confirmed.length === 0 && <p>ไม่มีรายการ</p>}
-              {confirmed.map((o) => (
+              {toReview.length === 0 && <p>ไม่มีรายการ</p>}
+              {toReview.map((o) => (
                 <Card key={o.id} className="p-0 overflow-hidden hover:shadow-md transition-shadow" >
                   {/* STATUS BAR */}
                   <div className="flex justify-between items-center bg-green-50 px-4 py-2 border-b">
@@ -674,7 +633,7 @@ const UserOrders = () => {
                   <div className="flex justify-end pt-2">
                       <Button
                         variant="destructive"
-                        onClick={() => { setSelectedOrder(o as ShippingOrder);
+                        onClick={() => { setSelectedOrder(o);
                               setOpenReview(true);
                             }} > รีวิวสินค้า </Button> </div>
                 </Card>
@@ -762,5 +721,6 @@ const UserOrders = () => {
       </Dialog>
     </div>
   );
-}
+};
+
 export default UserOrders;

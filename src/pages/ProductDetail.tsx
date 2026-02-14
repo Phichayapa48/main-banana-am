@@ -163,9 +163,14 @@ const ProductDetail = () => {
   if (!product) return;
 
   if (quantity > product.available_quantity) {
-    toast.error("จำนวนที่จองเกินกว่าสินค้าที่มี");
-    return;
-  }
+  toast.error("จำนวนเกินสต็อกที่มีอยู่");
+  return;
+}
+
+  if (quantity <= 0) {
+  toast.error("จำนวนต้องมากกว่า 0");
+  return;
+}
 
   if (addressType === "new") {
     if (!receiverName.trim()) {
@@ -196,19 +201,26 @@ const ProductDetail = () => {
     return;
   }
 
-  const { error } = await supabase.rpc("reserve_v4", {
-    p_product_id: product.id,
-    p_user_id: user.id,
-    p_quantity: quantity,
-    p_note: note || "",
-    p_use_profile: addressType === "saved",
-    p_receiver_name: addressType === "new" ? receiverName : null,
-    p_receiver_phone: addressType === "new" ? receiverPhone : null,
-    p_delivery_address: addressType === "new" ? newAddress : null
-  });
+  const useProfile = addressType === "saved";
+
+const deliveryAddress =
+  useProfile ? savedAddress : newAddress;
+
+const { error } = await supabase.rpc("reserve_v5", {
+  p_product_id: product.id,
+  p_quantity: quantity,
+  p_note: note,
+  p_use_profile: useProfile,
+  p_receiver_name: receiverName,
+  p_receiver_phone: receiverPhone,
+  p_delivery_address: deliveryAddress,
+});
 
   if (error) {
-    toast.error(error.message || "จองสินค้าไม่สำเร็จ");
+    toast.error(
+  error.message?.includes("สินค้าในสต็อกไม่เพียงพอ")
+    ? "สินค้าในสต็อกไม่เพียงพอ"
+    : "จองสินค้าไม่สำเร็จ" );
   } else {
     toast.success("จองสินค้าเรียบร้อย");
     setOpenReserve(false);
@@ -299,7 +311,10 @@ const ProductDetail = () => {
             <Button
               size="lg"
               className="w-full"
-              disabled={product.available_quantity <= 0}
+              disabled={
+                product.available_quantity <= 0 ||
+                quantity > product.available_quantity
+              }
               onClick={handleOpenReserve}
             >
               จองสินค้า
