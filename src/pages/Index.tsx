@@ -4,7 +4,7 @@ import { Card } from "@/components/ui/card";
 import {
   Upload, Sparkles, Book, Store, Utensils,
   Sprout, Droplets, BookOpen, Search, RefreshCw,
-  ArrowRight
+  ArrowRight, ShieldCheck // ✅ เพิ่ม ShieldCheck เข้ามา
 } from "lucide-react";
 import { useNavigate, useNavigationType } from "react-router-dom";
 import { toast } from "sonner";
@@ -19,6 +19,7 @@ const Index = () => {
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string>("");
   const [detecting, setDetecting] = useState(false);
+  const [isConsent, setIsConsent] = useState(false); // ✅ เพิ่ม State ยินยอมเก็บข้อมูล
   
   const [result, setResult] = useState<any>(null);
   const [bananaDetails, setBananaDetails] = useState<any>(null);
@@ -64,6 +65,7 @@ const Index = () => {
       setPreviewUrl(url);
       setResult(null);
       setBananaDetails(null);
+      setIsConsent(false); // ✅ Reset consent เมื่ออัปโหลดภาพใหม่
     }
   };
 
@@ -72,121 +74,122 @@ const Index = () => {
     setPreviewUrl("");
     setResult(null);
     setBananaDetails(null);
+    setIsConsent(false); // ✅ Reset consent
     window.scrollTo({ top: 0, behavior: "smooth" });
     toast.info("ล้างข้อมูลเรียบร้อย เริ่มสแกนใหม่ได้เลยงับ");
   };
 
-const handleDetect = async () => {
-  if (!selectedImage) {
-    toast.error("กรุณาเลือกรูปภาพก่อนครับพี่");
-    return;
-  }
-
-  setDetecting(true);
-
-  try {
-    const formData = new FormData();
-    formData.append("image", selectedImage);
-
-    const backendUrl = import.meta.env.VITE_API_BASE_URL || "/api";
-
-    const response = await fetch(`${backendUrl}/detect`, {
-      method: "POST",
-      body: formData,
-    });
-
-    // ✅ เช็ค HTTP status ก่อน
-    if (!response.ok) {
-      console.error("Backend HTTP Error:", response.status);
-      toast.error("ระบบวิเคราะห์มีปัญหา กรุณาลองใหม่");
+  const handleDetect = async () => {
+    if (!selectedImage) {
+      toast.error("กรุณาเลือกรูปภาพก่อนครับพี่");
       return;
     }
 
-    const data = await response.json();
-    console.log("AI response:", data);
+    setDetecting(true);
 
-    // ❌ AI fail
-    if (!data?.success) {
-      if (data?.reason === "no_banana_detected") {
-        toast.error("ไม่พบกล้วยในภาพ กรุณาลองใหม่");
-      } else if (data?.reason === "invalid_image") {
-        toast.error("ไฟล์ภาพไม่ถูกต้อง");
-      } else if (data?.reason === "all_models_failed") {
-        toast.error("ระบบไม่สามารถวิเคราะห์ได้ กรุณาลองใหม่");
-      } else {
-        toast.error("เกิดข้อผิดพลาดจากระบบ AI");
+    try {
+      const formData = new FormData();
+      formData.append("image", selectedImage);
+      // ✅ ส่งค่าความยินยอมไปที่ Backend ด้วย
+      formData.append("allow_storage", String(isConsent));
+
+      const backendUrl = import.meta.env.VITE_API_BASE_URL || "/api";
+
+      const response = await fetch(`${backendUrl}/detect`, {
+        method: "POST",
+        body: formData,
+      });
+
+      // ✅ เช็ค HTTP status ก่อน
+      if (!response.ok) {
+        console.error("Backend HTTP Error:", response.status);
+        toast.error("ระบบวิเคราะห์มีปัญหา กรุณาลองใหม่");
+        return;
       }
-      return;
+
+      const data = await response.json();
+      console.log("AI response:", data);
+
+      // ❌ AI fail
+      if (!data?.success) {
+        if (data?.reason === "no_banana_detected") {
+          toast.error("ไม่พบกล้วยในภาพ กรุณาลองใหม่");
+        } else if (data?.reason === "invalid_image") {
+          toast.error("ไฟล์ภาพไม่ถูกต้อง");
+        } else if (data?.reason === "all_models_failed") {
+          toast.error("ระบบไม่สามารถวิเคราะห์ได้ กรุณาลองใหม่");
+        } else {
+          toast.error("เกิดข้อผิดพลาดจากระบบ AI");
+        }
+        return;
+      }
+
+      // ✅ ตรวจ banana_key
+      if (!data?.banana_key) {
+        toast.error("ไม่พบรหัสสายพันธุ์จาก AI");
+        return;
+      }
+
+      const aiKey = String(data.banana_key);
+
+      const dbSlug = `kluai-${aiKey
+        .toLowerCase()
+        .replace(/[_\s-]/g, "")}`;
+
+      console.log("Query slug:", dbSlug);
+
+      const { data: dbData, error } = await supabase
+        .from("cultivars")
+        .select("*")
+        .eq("slug", dbSlug)
+        .maybeSingle();
+
+      if (error) {
+        console.error("Supabase error:", error);
+        toast.error("เกิดข้อผิดพลาดในการดึงข้อมูลฐานข้อมูล");
+        return;
+      }
+
+      if (!dbData) {
+        toast.error("ไม่พบข้อมูลสายพันธุ์ในฐานข้อมูล");
+        return;
+      }
+
+      const confidenceValue =
+        typeof data.confidence === "number"
+          ? data.confidence
+          : 0;
+
+      const finalResult = {
+        cultivar: dbData.thai_name,
+        confidence: confidenceValue,
+      };
+
+      setBananaDetails(dbData);
+      setResult(finalResult);
+
+      sessionStorage.setItem(
+        "last_detect_result",
+        JSON.stringify(finalResult)
+      );
+      sessionStorage.setItem(
+        "last_banana_details",
+        JSON.stringify(dbData)
+      );
+      sessionStorage.setItem(
+        "last_preview_url",
+        previewUrl
+      );
+
+      toast.success("วิเคราะห์กล้วยเรียบร้อย! 🍌");
+
+    } catch (err) {
+      console.error("Detect error:", err);
+      toast.error("เกิดข้อผิดพลาดในการเชื่อมต่อ");
+    } finally {
+      setDetecting(false);
     }
-
-    // ✅ ตรวจ banana_key
-    if (!data?.banana_key) {
-      toast.error("ไม่พบรหัสสายพันธุ์จาก AI");
-      return;
-    }
-
-    const aiKey = String(data.banana_key);
-
-    const dbSlug = `kluai-${aiKey
-      .toLowerCase()
-      .replace(/[_\s-]/g, "")}`;
-
-    console.log("Query slug:", dbSlug);
-
-    const { data: dbData, error } = await supabase
-      .from("cultivars")
-      .select("*")
-      .eq("slug", dbSlug)
-      .maybeSingle();
-
-    if (error) {
-      console.error("Supabase error:", error);
-      toast.error("เกิดข้อผิดพลาดในการดึงข้อมูลฐานข้อมูล");
-      return;
-    }
-
-    if (!dbData) {
-      toast.error("ไม่พบข้อมูลสายพันธุ์ในฐานข้อมูล");
-      return;
-    }
-
-    const confidenceValue =
-      typeof data.confidence === "number"
-        ? data.confidence
-        : 0;
-
-    const finalResult = {
-      cultivar: dbData.thai_name,
-      confidence: confidenceValue,
-    };
-
-    setBananaDetails(dbData);
-    setResult(finalResult);
-
-    sessionStorage.setItem(
-      "last_detect_result",
-      JSON.stringify(finalResult)
-    );
-    sessionStorage.setItem(
-      "last_banana_details",
-      JSON.stringify(dbData)
-    );
-    sessionStorage.setItem(
-      "last_preview_url",
-      previewUrl
-    );
-
-    toast.success("วิเคราะห์กล้วยเรียบร้อย! 🍌");
-
-  } catch (err) {
-    console.error("Detect error:", err);
-    toast.error("เกิดข้อผิดพลาดในการเชื่อมต่อ");
-  } finally {
-    setDetecting(false);
-  }
-};
-
-
+  };
 
   return (
     <div className="min-h-screen bg-gradient-hero">
@@ -258,6 +261,30 @@ const handleDetect = async () => {
                 )}
               </label>
             </div>
+
+            {/* ✅ ส่วน Consent: จะปรากฏเมื่อเลือกรูปแล้วแต่ยังไม่ได้วิเคราะห์ */}
+            {previewUrl && !result && (
+              <div className="bg-blue-50/50 border border-blue-100 rounded-xl p-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                <div className="flex items-start gap-3">
+                  <div className="mt-1">
+                    <input
+                      type="checkbox"
+                      id="data-consent"
+                      checked={isConsent}
+                      onChange={(e) => setIsConsent(e.target.checked)}
+                      className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer"
+                    />
+                  </div>
+                  <label htmlFor="data-consent" className="text-sm text-slate-600 leading-relaxed cursor-pointer select-none">
+                    <div className="flex items-center gap-1.5 font-bold text-slate-800 mb-0.5">
+                      <ShieldCheck className="w-4 h-4 text-blue-600" />
+                      ช่วยให้ AI เก่งขึ้น (Data Collection)
+                    </div>
+                    ยินยอมให้นำรูปภาพนี้ไปพัฒนาความแม่นยำของโมเดลจำแนกสายพันธุ์กล้วยในอนาคต โดยจะจัดเก็บเป็นข้อมูลนิรนาม (สอดคล้องกับนโยบาย PDPA)
+                  </label>
+                </div>
+              </div>
+            )}
 
             {previewUrl && !result && (
               <Button
