@@ -106,6 +106,15 @@ const FarmDashboard = () => {
       }
 
       setFarm(farmData);
+      const { data: productData, error: productError } = await supabase
+        .from("products")
+        .select("*")
+        .eq("farm_id", farmData.id)
+        .order("created_at", { ascending: false });
+
+      if (productError) throw productError;
+
+      setProducts(productData || []);
 
       const { data: statsData, error: statsError } =
   await supabase.rpc("get_farm_dashboard_stats");

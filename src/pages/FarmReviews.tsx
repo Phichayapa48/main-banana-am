@@ -41,7 +41,7 @@ const FarmReviews = () => {
 
   const loadData = useCallback(async () => {
     if (!farmId) return;
-
+    console.log("farmId from URL:", farmId);
     try {
       setLoading(true);
 

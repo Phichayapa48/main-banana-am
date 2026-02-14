@@ -67,11 +67,13 @@ const OrderDetail = () => {
 
 
   useEffect(() => {
-    if (id) loadOrder();
-  }, [id]);
+  if (!id) return;
+  loadOrder(id);
+}, [id]);
 
-  const loadOrder = async () => {
+  const loadOrder = async (orderId: string) => {
     try {
+      
       const { data: { session } } = await supabase.auth.getSession();
 
       if (!session) {
@@ -93,10 +95,15 @@ const OrderDetail = () => {
         return;
       }
 
+      console.log("ORDER ID:", orderId);
+      console.log("SESSION USER ID:", session.user.id);
+      console.log("FARM PROFILE ID:", farm.id);
+
       const { data: orderData, error: orderError } = await supabase
         .from("orders")
         .select(`
           id,
+          farm_id,
           order_number,
           receiver_name,
           receiver_phone,
@@ -112,12 +119,22 @@ const OrderDetail = () => {
           confirmed_at,
           shipped_at,
           delivered_at,
-          expiry_date,
-          products (id, name, price_per_unit, unit, image_url),
-          profiles:user_id (full_name, phone)
+          products:product_id (
+            id,
+            name,
+            price_per_unit,
+            unit,
+            image_url
+          ),
+          profiles:user_id (
+            full_name,
+            phone
+          )
         `)
 
-        .eq("id", id)
+        
+
+        .eq("id", orderId)
         .eq("farm_id", farm.id)
         .maybeSingle();
       if (orderData) {
@@ -144,6 +161,10 @@ const OrderDetail = () => {
 
           .eq("id", id)
           .maybeSingle();
+          if (orderError) {
+            console.error("ORDER QUERY ERROR:", orderError);
+            throw orderError;
+          }
 
         if (resData) {
           const formattedRes: OrderData = {
@@ -190,12 +211,17 @@ const OrderDetail = () => {
 
     try {
       if (newStatus === "confirmed" && order.is_reservation) {
-        const { error } = await supabase.rpc("confirm_reservation", {
+        const { data, error } = await supabase.rpc("confirm_reservation", {
           p_reservation_id: order.id,
         });
+
         if (error) throw error;
-        toast.success("Order confirmed and moved to orders");
-        navigate("/farm/orders");
+
+        if (data) {
+          toast.success("Order confirmed");
+          navigate(`/farm/orders/${data}`); // ✅ ไปหน้า order ใหม่
+        }
+
         return;
       }
 
@@ -232,7 +258,7 @@ const OrderDetail = () => {
       if (error) throw error;
 
       toast.success(`Order ${newStatus}`);
-      await loadOrder();
+      await loadOrder(order.id);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Failed to update order";
       toast.error(message);
@@ -252,6 +278,18 @@ const OrderDetail = () => {
     };
     return colors[status] || "bg-gray-100 text-gray-800";
   };
+
+  const getStatusLabel = (status: string) => {
+  const labels: Record<string, string> = {
+    pending: "รอดำเนินการ",
+    confirmed: "ยืนยันแล้ว",
+    shipped: "กำลังจัดส่ง",
+    delivered: "เสร็จสิ้น",
+    cancelled: "ยกเลิกแล้ว",
+    reviewed: "รีวิวแล้ว",
+  };
+  return labels[status] || status;
+};
 
   if (loading) {
     return (
@@ -298,7 +336,7 @@ const OrderDetail = () => {
               <p className="font-mono"> {order.order_number ?? order.id} </p></div>
 
               <span className={`px-3 py-1 rounded-full text-sm ${getStatusColor(order.status)}`}>
-                {order.status}
+                {getStatusLabel(order.status)}
               </span>
             </div>
             <p className="text-sm text-muted-foreground">

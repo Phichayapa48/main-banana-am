@@ -143,6 +143,23 @@ interface ToReviewOrder {
   };
 }
 
+interface CancelledReservation {
+  id: string;
+  quantity: number;
+  created_at: string;
+  cancelled_at: string | null;
+  cancelled_by: string | null;
+  cancel_reason: string | null;
+
+  products: {
+    name: string;
+    product_type: string;
+    farm_profiles?: {
+      farm_name: string;
+    } | null;
+  };
+}
+
 
 /* ---------- Component ---------- */
 
@@ -163,6 +180,11 @@ const UserOrders = () => {
   const [history, setHistory] = useState<ReviewedOrder[]>([]);
   const [toReview, setToReview] = useState<ToReviewOrder[]>([]);
   const [tab, setTab] = useState("pending");
+  const [cancelledReservations, setCancelledReservations] = useState<CancelledReservation[]>([]);
+  const [openCancel, setOpenCancel] = useState(false);
+  const [selectedReservation, setSelectedReservation] =
+  useState<Reservation | null>(null);
+  const [cancelReason, setCancelReason] = useState("");
 
 
   /* ---------- LOAD DATA ---------- */
@@ -181,7 +203,7 @@ const UserOrders = () => {
 
       if (!user) return;
 
-      const [shippingRes, confirmedRes, pendingRes, toReviewRes, historyRes] = await Promise.all([
+      const [shippingRes, confirmedRes, pendingRes, toReviewRes, historyRes,cancelledRes] = await Promise.all([
         supabase
           .from("orders")
           .select(`
@@ -266,6 +288,7 @@ const UserOrders = () => {
 
           `)
           .eq("user_id", user.id)
+          .eq("status", "pending")
           .order("created_at", { ascending: false }),
         
           supabase
@@ -311,7 +334,27 @@ const UserOrders = () => {
               )
             `)
             .eq("user_id", user.id)
-            .eq("status", "reviewed")
+            .eq("status", "reviewed"),
+            
+            supabase
+              .from("reservations")
+              .select(`
+                id,
+                quantity,
+                created_at,
+                cancelled_at,
+                cancelled_by,
+                cancel_reason,
+                products (
+                  name,
+                  product_type,
+                  farm_profiles (
+                    farm_name
+                  )
+                )
+              `)
+              .eq("user_id", user.id)
+              .eq("status", "cancelled"),
 
 
       ]);
@@ -321,6 +364,7 @@ const UserOrders = () => {
       setPending(pendingRes.data || []);
       setToReview(toReviewRes.data || []);
       setHistory(historyRes.data || []);
+      setCancelledReservations(cancelledRes.data || []);
     } catch {
       toast.error("โหลดออเดอร์ไม่สำเร็จ");
     } finally {
@@ -353,15 +397,20 @@ const UserOrders = () => {
     }
   };
 
-  const cancelReservation = async (reservationId: string) => {
+  const cancelReservation = async (
+  reservationId: string,
+  reason: string
+) => {
   try {
     const { error } = await supabase.rpc("cancel_reservation", {
       p_reservation_id: reservationId,
+      p_reason: reason,
     });
 
     if (error) throw error;
 
     toast.success("ยกเลิกการจองแล้ว");
+
     await loadAll();
   } catch (e: any) {
     console.error(e);
@@ -420,12 +469,13 @@ const UserOrders = () => {
       <div className="container mx-auto px-4 max-w-6xl space-y-6 py-6">
         {/* ---------- Tabs ---------- */}
         <Tabs value={tab} onValueChange={(v) => setTab(v as any)}>
-          <TabsList className="grid grid-cols-5 w-full">
-            <TabsTrigger value="shipping">กำลังจัดส่ง</TabsTrigger>
-            <TabsTrigger value="confirmed">ฟาร์มยืนยันแล้ว</TabsTrigger>
+          <TabsList className="grid grid-cols-6 w-full">
             <TabsTrigger value="pending">รอยืนยัน</TabsTrigger>
+            <TabsTrigger value="confirmed">ฟาร์มยืนยันแล้ว</TabsTrigger>
+            <TabsTrigger value="shipping">กำลังจัดส่ง</TabsTrigger>
             <TabsTrigger value="review">ยังไม่ได้รีวิว</TabsTrigger>
             <TabsTrigger value="history">ประวัติ</TabsTrigger>
+            <TabsTrigger value="cancelled">ยกเลิกแล้ว</TabsTrigger>
           </TabsList>
         </Tabs>
 
@@ -578,9 +628,9 @@ const UserOrders = () => {
                       <div className="flex justify-end pt-2"><Button
                             className="bg-orange-500 hover:bg-orange-600"
                         onClick={() => {
-                          if (confirm("ต้องการยกเลิกออเดอร์นี้หรือไม่ ?")) {
-                            cancelReservation(r.id); }}}
-                      > ยกเลิกออเดอร์ </Button> </div>
+                          setSelectedReservation(r);
+                          setOpenCancel(true);
+                        }} > ยกเลิกออเดอร์ </Button> </div>
                 </Card>
               ))}
             </Card>
@@ -646,34 +696,19 @@ const UserOrders = () => {
 {tab === "history" && (
   <Card className="p-6 space-y-4">
     {history.length === 0 && <p>ไม่มีรายการ</p>}
-
     {history.map((o) => {
       const review = Array.isArray(o.reviews) ? o.reviews[0] : o.reviews;
 
       return (
         <Card
           key={o.id}
-          className="p-4 space-y-2 hover:shadow-md transition-shadow"
-        >
-          <p className="font-semibold text-lg">
-            {o.products.name}
+          className="p-4 space-y-2 hover:shadow-md transition-shadow">
+          <p className="font-semibold text-lg">{o.products.name}</p>
+          <p className="text-sm text-muted-foreground">{o.products.product_type} • {o.quantity} ชิ้น </p>
+          <p className="text-sm">ฟาร์ม :{" "}
+            <span className="font-medium ml-1">{o.products.farm_profiles?.farm_name || "-"}</span>
           </p>
-
-          <p className="text-sm text-muted-foreground">
-            {o.products.product_type} • {o.quantity} ชิ้น
-          </p>
-
-          <p className="text-sm">
-            ฟาร์ม :{" "}
-            <span className="font-medium ml-1">
-              {o.products.farm_profiles?.farm_name || "-"}
-            </span>
-          </p>
-
-          <p className="text-sm">
-            วันที่จอง : {formatDate(o.created_at)}
-          </p>
-
+          <p className="text-sm">วันที่จอง : {formatDate(o.created_at)}</p>
           <div className="border-t pt-2 space-y-1 text-sm">
             <p>⭐ คะแนน : {review?.rating ?? "-"} / 5</p>
             <p>รีวิว : {review?.comment || "-"}</p>
@@ -681,6 +716,35 @@ const UserOrders = () => {
         </Card>
       );
     })}
+  </Card>
+)}
+
+
+{/* ---------- CANCELLED ---------- */}
+{tab === "cancelled" && (
+  <Card className="p-6 space-y-4">
+    {cancelledReservations.length === 0 && <p>ไม่มีรายการ</p>}
+
+    {cancelledReservations.map((r) => (
+      <Card
+        key={r.id} className="p-4 space-y-2 hover:shadow-md transition-shadow">
+        <p className="font-semibold text-lg">{r.products.name} </p>
+        <p className="text-sm text-muted-foreground">{r.products.product_type} • {r.quantity} ชิ้น </p>
+        <p className="text-sm">ฟาร์ม :{" "}<span className="font-medium ml-1">
+            {r.products.farm_profiles?.farm_name || "-"}</span></p>
+        <p className="text-sm">วันที่จอง : {formatDate(r.created_at)}</p>
+        <p className="text-sm">วันที่ยกเลิก : {formatDate(r.cancelled_at)}</p>
+      <p className="text-sm">ยกเลิกโดย :{" "} <span className="font-medium ml-1">
+          {r.cancelled_by === "user"
+            ? "คุณ"
+            : r.cancelled_by === "farm"
+            ? "ฟาร์ม"
+            : "-"}
+        </span>
+        <p className="text-sm"> เหตุผล : {r.cancel_reason || "-"} </p> </p>
+        <Badge variant="destructive">Cancelled</Badge>
+      </Card>
+    ))}
   </Card>
 )}
 
@@ -719,6 +783,43 @@ const UserOrders = () => {
           </div>
         </DialogContent>
       </Dialog>
+
+
+
+      <Dialog open={openCancel} onOpenChange={setOpenCancel}>
+  <DialogContent>
+    <DialogHeader>
+      <DialogTitle>เหตุผลในการยกเลิก</DialogTitle>
+    </DialogHeader>
+
+    <div className="space-y-4">
+      <Textarea
+        placeholder="กรอกเหตุผล..."
+        value={cancelReason}
+        onChange={(e) => setCancelReason(e.target.value)}
+      />
+
+      <Button
+        variant="destructive"
+        onClick={async () => {
+          if (!selectedReservation) return;
+
+          await cancelReservation(
+            selectedReservation.id,
+            cancelReason
+          );
+
+          setCancelReason("");
+          setSelectedReservation(null);
+          setOpenCancel(false);
+        }}
+        className="w-full"
+      >
+        ยืนยันการยกเลิก
+      </Button>
+    </div>
+  </DialogContent>
+</Dialog>
     </div>
   );
 };
