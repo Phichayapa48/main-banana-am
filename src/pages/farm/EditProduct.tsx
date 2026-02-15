@@ -84,88 +84,52 @@ const EditProduct = () => {
     loadProduct();
   }, [id, navigate]);
 
-  /* ================= 2. DELETE OLD IMAGES HELPER ================= */
-  const deleteOldImages = async (productId: string) => {
-    try {
-      const { data: oldImages } = await supabase
-        .from("product_images")
-        .select("image_path")
-        .eq("product_id", productId);
-
-      if (oldImages && oldImages.length > 0) {
-        const paths = oldImages.map((img) => img.image_path);
-        await supabase.storage.from("product-images").remove(paths);
-        await supabase
-          .from("product_images")
-          .delete()
-          .eq("product_id", productId);
-      }
-    } catch (error) {
-      console.error("Error deleting old images:", error);
-    }
-  };
-
-  /* ================= 3. SUBMIT (UPDATE + REPLACE IMAGE) ================= */
+  /* ================= 2. SUBMIT DATA (จุดที่แก้ Error) ================= */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!id || !farmId) return;
+    if (!id) return;
 
-    // ✨ เช็คชื่อสินค้าซ้ำอีกรอบ (Double Check)
-    const isNumericOnly = /^[0-9]+$/.test(form.name.trim());
-    if (isNumericOnly) {
-      toast.error("กรุณาระบุชื่อสินค้าให้ถูกต้อง เช่น กล้วยนาก");
-      return;
-    }
-    
     setSubmitting(true);
 
     try {
-      let finalImageUrl = form.image_url;
+      let imagePath: string | null = null;
 
+      // 1️⃣ upload ถ้ามีไฟล์ใหม่
       if (files.length > 0) {
-        await deleteOldImages(id);
         const file = files[0];
-        const newPath = `${farmId}/${id}/${crypto.randomUUID()}`;
+        // ใช้ชื่อไฟล์เดิม หรือ random ก็ได้ตามโค้ดแอ๋ม
+        imagePath = `${farmId}/${id}/${crypto.randomUUID()}`;
 
         const { error: uploadError } = await supabase.storage
           .from("product-images")
-          .upload(newPath, file);
+          .upload(imagePath, file, { upsert: true });
 
         if (uploadError) throw uploadError;
-
-        const { data: urlData } = supabase.storage
-          .from("product-images")
-          .getPublicUrl(newPath);
-        
-        finalImageUrl = urlData.publicUrl;
-
-        await supabase.from("product_images").insert({
-          product_id: id,
-          image_path: newPath,
-        });
       }
 
-      const { error: updateError } = await supabase
-        .from("products")
-        .update({
-          name: form.name.trim(),
-          description: form.description || null,
-          product_type: form.product_type,
-          price_per_unit: Number(form.price_per_unit),
-          available_quantity: Number(form.available_quantity),
-          unit: form.unit,
-          harvest_date: form.harvest_date,
-          expiry_date: form.expiry_date || null,
-          image_url: finalImageUrl,
-        })
-        .eq("id", id);
+      // 2️⃣ เรียก RPC (ส่งข้อมูลไปบันทึก)
+      const { error } = await supabase.rpc("update_product_secure", {
+        p_product_id: id,
+        p_name: form.name,
+        p_description: form.description || null,
+        // ✨ ใส่ as any เพื่อให้ผ่านการเช็ค Type ตอนส่งไปที่ Postgres
+        p_product_type: form.product_type as any, 
+        p_price: Number(form.price_per_unit),
+        p_quantity: Number(form.available_quantity),
+        p_unit: form.unit,
+        p_harvest_date: form.harvest_date,
+        p_expiry_date: form.expiry_date || null,
+        p_image_path: imagePath,
+      });
 
-      if (updateError) throw updateError;
+      if (error) throw error;
 
       toast.success("แก้ไขข้อมูลสินค้าเรียบร้อย");
       navigate("/farm/products", { replace: true });
 
     } catch (err: any) {
+      // ⚠️ ถ้ายัง Error "type product_type but expression is of type text" 
+      // แสดงว่าต้องแก้ที่ตัว SQL Function ใน Supabase SQL Editor ครับ
       toast.error(err.message || "เกิดข้อผิดพลาด");
     } finally {
       setSubmitting(false);
@@ -180,6 +144,7 @@ const EditProduct = () => {
     );
   }
 
+  /* ================= 3. RENDER UI (เหมือนเดิมเป๊ะ) ================= */
   return (
     <div className="container mx-auto max-w-xl py-10 px-4">
       <Button variant="ghost" size="sm" onClick={() => navigate(-1)} className="mb-4">
@@ -192,7 +157,6 @@ const EditProduct = () => {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <Label>ชื่อสินค้า</Label>
-            {/* ✨ ฟิกชื่อสินค้า: ภาษาไทยล้วน + ห้ามเลขล้วน */}
             <Input
               value={form.name}
               onChange={(e) => {
@@ -233,7 +197,7 @@ const EditProduct = () => {
               </Select>
             </div>
             <div>
-              <Label>หน่วย</Label>
+              <Label>หน่วย(หวี เครือ ต้น กิโล)</Label>
               <Input
                 value={form.unit}
                 onChange={(e) => setForm({ ...form, unit: e.target.value })}
@@ -244,7 +208,6 @@ const EditProduct = () => {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <Label>ราคา (บาท)</Label>
-              {/* ✨ ฟิกราคา: ภาษาไทยล้วน */}
               <Input
                 type="number"
                 value={form.price_per_unit}
@@ -260,7 +223,6 @@ const EditProduct = () => {
             </div>
             <div>
               <Label>จำนวนที่มี</Label>
-              {/* ✨ ฟิกจำนวน: ภาษาไทยล้วน */}
               <Input
                 type="number"
                 value={form.available_quantity}

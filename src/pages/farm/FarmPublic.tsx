@@ -3,8 +3,9 @@ import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Star, Loader2 } from "lucide-react";
+import { ArrowLeft, Star, Loader2, MapPin } from "lucide-react";
 
+/* ---------- Types ---------- */
 interface FarmProfile {
   id: string;
   farm_name: string;
@@ -12,8 +13,9 @@ interface FarmProfile {
   farm_description: string | null;
   rating: number | null;
   total_reviews: number | null;
-  // ✨ เพิ่มไว้รับข้อมูลสถานะออนไลน์
-  profiles?: any; 
+  profiles?: {
+    last_seen?: string | null;
+  } | any;
 }
 
 interface Product {
@@ -28,22 +30,21 @@ interface Product {
   image_url: string | null;
 }
 
-/* ---------- Helper สำหรับคำนวณเวลาออนไลน์ (เหมือนหน้า Market) ---------- */
+/* ---------- Helper: คำนวณเวลาออนไลน์ ---------- */
 const getTimeAgo = (dateString: string | null | undefined) => {
   if (!dateString) return "ไม่ระบุสถานะ";
   const now = new Date();
   const lastSeen = new Date(dateString);
-  
   if (isNaN(lastSeen.getTime())) return "ไม่ระบุสถานะ";
 
-  const diffInMs = now.getTime() - lastSeen.getTime();
-  const diffInMinutes = Math.floor(diffInMs / (1000 * 60));
-  const diffInHours = Math.floor(diffInMs / (1000 * 60 * 60));
+  const diffMs = now.getTime() - lastSeen.getTime();
+  const diffMin = Math.floor(diffMs / (1000 * 60));
+  const diffHour = Math.floor(diffMs / (1000 * 60 * 60));
 
-  if (diffInMinutes < 5) return "ออนไลน์ตอนนี้";
-  if (diffInMinutes < 60) return `ออนไลน์เมื่อ ${diffInMinutes} นาทีที่แล้ว`;
-  if (diffInHours < 24) return `ออนไลน์เมื่อ ${diffInHours} ชม. ที่แล้ว`;
-  return `ออนไลน์เมื่อ ${Math.floor(diffInHours / 24)} วันที่แล้ว`;
+  if (diffMin < 5) return "ออนไลน์ตอนนี้";
+  if (diffMin < 60) return `ออนไลน์เมื่อ ${diffMin} นาทีที่แล้ว`;
+  if (diffHour < 24) return `ออนไลน์เมื่อ ${diffHour} ชม. ที่แล้ว`;
+  return `ออนไลน์เมื่อ ${Math.floor(diffHour / 24)} วันที่แล้ว`;
 };
 
 const FarmPublic = () => {
@@ -55,15 +56,15 @@ const FarmPublic = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (farmId) loadFarm();
+    if (farmId) loadFarmData();
   }, [farmId]);
 
-  const loadFarm = async () => {
+  const loadFarmData = async () => {
     try {
       setLoading(true);
 
-      // ✨ ดึงข้อมูลฟาร์มพร้อมกับ last_seen ของเจ้าของฟาร์ม
-      const { data: farmData } = await supabase
+      // ดึงข้อมูลฟาร์มพร้อมเช็คเวลาออนไลน์
+      const { data: farmData, error: farmError } = await supabase
         .from("farm_profiles")
         .select(`
           *,
@@ -74,18 +75,25 @@ const FarmPublic = () => {
         .eq("id", farmId)
         .single();
 
+      if (farmError) throw farmError;
       setFarm(farmData as any);
 
-      // ✨ ดึงสินค้า และกรองเฉพาะตัวที่มีสต็อก (available_quantity > 0)
-      const { data: productsData } = await supabase
+      // ดึงสินค้าของฟาร์มนี้
+      const { data: productsData, error: prodError } = await supabase
         .from("products")
         .select("*")
         .eq("farm_id", farmId)
-        .eq("is_active", true)
-        .gt("available_quantity", 0) // ซ่อนสินค้าหมด
-        .order("created_at", { ascending: false });
+        .eq("is_active", true);
 
-      setProducts(productsData || []);
+      if (prodError) throw prodError;
+      
+      setProducts(
+        (productsData ?? []).filter(
+          (p: Product) => Number(p.available_quantity ?? 0) > 0
+        )
+      );
+    } catch (err) {
+      console.error("Load farm error:", err);
     } finally {
       setLoading(false);
     }
@@ -94,73 +102,76 @@ const FarmPublic = () => {
   if (loading) {
     return (
       <div className="min-h-screen flex justify-center items-center">
-        <Loader2 className="w-8 h-8 animate-spin" />
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
       </div>
     );
   }
 
-  // ✨ คำนวณสถานะ Online
-  const farmProfiles = farm?.profiles;
-  const lastSeenVal = Array.isArray(farmProfiles) 
-    ? farmProfiles[0]?.last_seen 
-    : farmProfiles?.last_seen;
-
-  const isOnline = lastSeenVal && 
-    (new Date().getTime() - new Date(lastSeenVal).getTime()) < 300000;
+  // คำนวณสถานะออนไลน์
+  const ls = Array.isArray(farm?.profiles) ? farm?.profiles[0]?.last_seen : farm?.profiles?.last_seen;
+  const isOnline = ls && new Date().getTime() - new Date(ls).getTime() < 300000;
 
   return (
     <div className="min-h-screen bg-muted/30">
-      {/* Header */}
-      <nav className="border-b bg-background">
+      {/* Header - ตามสไตล์ที่ 2 */}
+      <nav className="border-b bg-background sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4 flex items-center gap-4">
-          <Button variant="ghost" onClick={() => navigate(-1)}>
+          <Button variant="ghost" size="sm" onClick={() => navigate(-1)}>
             <ArrowLeft className="w-4 h-4 mr-2" />
             ย้อนกลับ
           </Button>
-
-          <h1 className="text-xl font-bold">{farm?.farm_name}</h1>
+          <h1 className="text-lg font-bold truncate">{farm?.farm_name}</h1>
         </div>
       </nav>
 
       <div className="container mx-auto px-4 py-8 max-w-5xl">
-        {/* Farm Info */}
-        <Card className="p-6 mb-8">
-          <h2 className="text-2xl font-bold">{farm?.farm_name}</h2>
-          <p className="text-muted-foreground">{farm?.farm_location}</p>
+        {/* Farm Info Card - ตามสไตล์ที่ 2 */}
+        <Card className="p-6 mb-8 border-none shadow-sm">
+          <div className="flex flex-col md:flex-row md:justify-between md:items-start gap-4">
+            <div>
+              <h2 className="text-2xl font-bold">{farm?.farm_name}</h2>
+              <p className="text-muted-foreground flex items-center gap-1 mt-1">
+                <MapPin className="w-4 h-4" />
+                {farm?.farm_location}
+              </p>
+              
+              {/* จุดเขียวออนไลน์ - แทรกเพิ่มแบบเนียนๆ */}
+              <div className="flex items-center gap-2 mt-3">
+                <div className={`w-2 h-2 rounded-full ${isOnline ? "bg-green-500 animate-pulse" : "bg-gray-300"}`} />
+                <span className="text-xs text-muted-foreground">
+                  {getTimeAgo(ls)}
+                </span>
+              </div>
+            </div>
 
-          {/* ✨ เพิ่มบรรทัดสถานะออนไลน์ใต้โลเคชั่น */}
-          <div className="flex items-center gap-1.5 mt-2">
-            <div className={`w-2 h-2 rounded-full ${isOnline ? "bg-green-500 animate-pulse" : "bg-gray-300"}`} />
-            <span className="text-[11px] font-medium text-slate-500">
-              {getTimeAgo(lastSeenVal)}
-            </span>
+            {farm?.rating != null && (
+              <div 
+                className="flex items-center gap-1 text-yellow-500 cursor-pointer hover:underline"
+                onClick={() => navigate(`/farm/reviews/${farm.id}`)}
+              >
+                <Star className="w-5 h-5 fill-current" />
+                <span className="text-xl font-bold">{farm.rating.toFixed(1)}</span>
+                <span className="text-sm text-muted-foreground ml-1">
+                  ({farm.total_reviews ?? 0} reviews)
+                </span>
+              </div>
+            )}
           </div>
 
-          {farm?.rating != null && (
-            <div 
-              className="flex items-center gap-1 text-yellow-500 mt-2 cursor-pointer hover:underline w-fit"
-              onClick={() => navigate(`/farm/reviews/${farm.id}`)}
-            >
-              <Star className="w-4 h-4 fill-current" />
-              {farm.rating.toFixed(1)}
-              <span className="text-sm text-muted-foreground ml-1">
-                ({farm.total_reviews ?? 0} reviews)
-              </span>
-            </div>
-          )}
-
           {farm?.farm_description && (
-            <p className="mt-4 text-sm text-muted-foreground">
-              {farm.farm_description}
-            </p>
+            <div className="mt-4 pt-4 border-t">
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                {farm.farm_description}
+              </p>
+            </div>
           )}
         </Card>
 
-        {/* Products */}
-        <h3 className="text-lg font-semibold mb-4">สินค้าในร้าน</h3>
+        {/* Products Section - ตามสไตล์ที่ 2 */}
+        <h3 className="text-lg font-semibold mb-6">สินค้าในร้าน</h3>
 
         {products.length === 0 ? (
-          <div className="text-center py-20 text-muted-foreground">
+          <div className="text-center py-20 bg-white rounded-xl border border-dashed text-muted-foreground font-medium">
             ฟาร์มนี้ยังไม่มีสินค้าพร้อมจำหน่าย
           </div>
         ) : (
@@ -168,34 +179,43 @@ const FarmPublic = () => {
             {products.map((p) => (
               <Card
                 key={p.id}
-                className="cursor-pointer hover:shadow-md transition"
+                className="cursor-pointer hover:shadow-lg transition-all duration-300 overflow-hidden border-none shadow-sm"
                 onClick={() => navigate(`/market/product/${p.id}`)}
               >
-                <div className="aspect-video bg-muted flex items-center justify-center">
+                <div className="aspect-video bg-muted relative">
                   {p.image_url ? (
                     <img
                       src={p.image_url}
                       className="w-full h-full object-cover"
+                      alt={p.name}
                     />
                   ) : (
-                    <span className="text-5xl">🍌</span>
+                    <div className="w-full h-full flex items-center justify-center text-5xl bg-slate-50">🍌</div>
                   )}
+                  <div className="absolute top-2 right-2">
+                    <span className="text-[10px] px-2 py-1 rounded-md bg-white/90 font-bold shadow-sm">
+                      {p.product_type === "fruit" ? "ผล" : "หน่อ"}
+                    </span>
+                  </div>
                 </div>
 
                 <div className="p-5">
-                  <h3 className="font-semibold text-lg">{p.name}</h3>
-
-                  <p className="text-sm text-muted-foreground line-clamp-2 mb-4">
-                    {p.description || "Fresh produce"}
+                  <h3 className="font-bold text-lg mb-1">{p.name}</h3>
+                  <p className="text-sm text-muted-foreground line-clamp-2 mb-4 h-10">
+                    {p.description || "สดจากฟาร์ม คัดคุณภาพมาเพื่อคุณ"}
                   </p>
 
-                  <p className="text-xl font-bold text-primary">
-                    ฿{p.price_per_unit}/{p.unit}
-                  </p>
-
-                  <p className="text-xs text-muted-foreground">
-                    {p.available_quantity} available
-                  </p>
+                  <div className="flex justify-between items-end">
+                    <div>
+                      <p className="text-xl font-black text-primary">
+                        ฿{p.price_per_unit.toLocaleString()}
+                        <span className="text-sm font-normal text-muted-foreground ml-1">/{p.unit}</span>
+                      </p>
+                      <p className="text-[10px] text-muted-foreground font-medium mt-1">
+                        สต็อก: {p.available_quantity} {p.unit}
+                      </p>
+                    </div>
+                  </div>
                 </div>
               </Card>
             ))}

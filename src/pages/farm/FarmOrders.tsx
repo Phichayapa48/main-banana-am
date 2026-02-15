@@ -43,7 +43,8 @@ type OrderStatus =
   | "shipped"
   | "delivered"
   | "cancelled"
-  | "expired";
+  | "expired"
+  | "reviewed";
 
 interface Reservation {
   id: string;
@@ -79,6 +80,8 @@ const FarmOrders = () => {
   const [carrier, setCarrier] = useState("");
   const [search, setSearch] = useState("");
   const today = new Date().toISOString().split("T")[0];
+  const [cancelReason, setCancelReason] = useState("");
+  const [cancelId, setCancelId] = useState<string | null>(null);
 
 const todayShipping = useMemo(
   () =>
@@ -99,10 +102,6 @@ const otherConfirmed = useMemo(
     ),
   [orders]
 );
-
-
-
-  
 
   useEffect(() => {
     loadData();
@@ -145,6 +144,7 @@ const otherConfirmed = useMemo(
             profiles:user_id ( full_name )
           `)
           .eq("products.farm_id", farmProfile.id)
+          .eq("status", "pending")
           .order("created_at"),
 
         supabase
@@ -191,19 +191,23 @@ loadData(); // ✅ ใช้อันนี้
   }
 
 
-  const cancelReservation = async (id: string) => {
-    const { error } = await supabase
-      .from("reservations")
-      .delete()
-      .eq("id", id);
+  const cancelReservation = async (
+  id: string,
+  reason: string
+) => {
+  const { error } = await supabase.rpc("cancel_reservation", {
+    p_reservation_id: id,
+    p_reason: reason || "ไม่ระบุเหตุผล"
+  });
 
-    if (error) {
-      toast.error(error.message);
-      return;
-    }
+  if (error) {
+    toast.error(error.message);
+    return;
+  }
 
-    loadData();
-  };
+  toast.success("ยกเลิกการจองเรียบร้อย");
+  loadData();
+};
 
   const updateOrder = async (
     id: string,
@@ -240,7 +244,7 @@ loadData(); // ✅ ใช้อันนี้
       orders.filter(
         (o) =>
           o.status === "delivered" ||
-          o.status === "cancelled"
+          o.status === "reviewed"
       ),
     [orders]
   );
@@ -328,7 +332,11 @@ loadData(); // ✅ ใช้อันนี้
 
         <AlertDialog>
           <AlertDialogTrigger asChild>
-            <Button size="icon" variant="ghost">
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={() => setCancelId(r.id)}
+            >
               <X className="w-4 h-4 text-red-600" />
             </Button>
           </AlertDialogTrigger>
@@ -341,12 +349,23 @@ loadData(); // ✅ ใช้อันนี้
               <AlertDialogDescription>
                 ยกเลิกการจองนี้ใช่ไหม
               </AlertDialogDescription>
+              <Input
+                  placeholder="เหตุผลในการยกเลิก"
+                  value={cancelReason}
+                  onChange={(e) => setCancelReason(e.target.value)}
+                />
             </AlertDialogHeader>
 
             <AlertDialogFooter>
               <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
               <AlertDialogAction
-                onClick={() => cancelReservation(r.id)}
+                onClick={() => {
+                  if (!cancelId) return;
+
+                  cancelReservation(cancelId, cancelReason);
+                  setCancelId(null);
+                  setCancelReason("");
+                }}
               >
                 ยืนยัน
               </AlertDialogAction>
@@ -354,6 +373,8 @@ loadData(); // ✅ ใช้อันนี้
           </AlertDialogContent>
         </AlertDialog>
       </>
+
+      
     )}
   />
 )}
@@ -546,6 +567,7 @@ const OrderTable = ({
         ))}
       </TableBody>
     </Table>
+
   );
 };
 

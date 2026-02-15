@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { ArrowLeft, Loader2, User, Store } from "lucide-react";
+import { ArrowLeft, Loader2, User, Store, AlertCircle } from "lucide-react";
 
 /* ---------- Types ---------- */
 
@@ -71,7 +71,6 @@ const UpdateProfile = () => {
         return;
       }
 
-      // ✅ set email ถูกที่แล้ว
       setEmailForm({
         email: session.user.email || "",
       });
@@ -174,7 +173,7 @@ const UpdateProfile = () => {
     }
   };
 
-  /* ---------- SAVE EMAIL (จุดที่แก้ไข) ---------- */
+  /* ---------- SAVE EMAIL ---------- */
 
   const saveEmail = async () => {
     if (!emailForm.email.trim()) {
@@ -191,10 +190,10 @@ const UpdateProfile = () => {
 
       if (error) throw error;
 
-      // เพิ่มแจ้งเตือนแบบ Pop-up (Toast) ที่มีรายละเอียดชัดเจนขึ้น
-      toast.success("บันทึกคำขอเปลี่ยนอีเมลเรียบร้อย!", {
-        description: "โปรดตรวจสอบกล่องจดหมายของอีเมลใหม่เพื่อกดยืนยันการเปลี่ยนแปลง",
-        duration: 6000,
+      // แก้ไขข้อความแจ้งเตือนให้ระบุว่าต้องกดยืนยันทั้ง 2 เมล
+      toast.success("ส่งคำขอเปลี่ยนอีเมลแล้ว!", {
+        description: "สำคัญ: คุณต้องกดยืนยันลิงก์ในอีเมล 'ทั้งที่เมลเดิม' และ 'เมลใหม่' การเปลี่ยนจึงจะสำเร็จครับ",
+        duration: 10000,
       });
 
     } catch (e: any) {
@@ -267,11 +266,7 @@ const UpdateProfile = () => {
 
       <div className="container mx-auto px-4 py-8">
         <div className="max-w-2xl mx-auto">
-
           <Tabs defaultValue="profile">
-
-            {/* ---------- TAB HEADER ---------- */}
-
             <TabsList
               className={`grid mb-6 ${
                 isFarm ? "grid-cols-3" : "grid-cols-2"
@@ -289,8 +284,6 @@ const UpdateProfile = () => {
 
               <TabsTrigger value="email">📧 แก้ไขอีเมล</TabsTrigger>
             </TabsList>
-
-            {/* ---------- PROFILE TAB ---------- */}
 
             <TabsContent value="profile">
               <Card className="p-6 space-y-6">
@@ -344,8 +337,6 @@ const UpdateProfile = () => {
                 </Button>
               </Card>
             </TabsContent>
-
-            {/* ---------- FARM TAB ---------- */}
 
             {isFarm && (
               <TabsContent value="farm">
@@ -402,12 +393,21 @@ const UpdateProfile = () => {
               </TabsContent>
             )}
 
-            {/* ---------- EMAIL TAB ---------- */}
-
             <TabsContent value="email">
               <Card className="p-6 space-y-6">
+                {/* แก้ไข UI กล่องคำแนะนำให้ระบุเรื่อง 2 เมลชัดเจน */}
+                <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl flex gap-3">
+                  <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
+                  <div className="text-xs text-amber-800 space-y-2">
+                    <p className="font-bold">ขั้นตอนการเปลี่ยนอีเมลเพื่อความปลอดภัย:</p>
+                    <p>1. ระบบจะส่งลิงก์ยืนยันไปที่ <span className="font-bold underline text-amber-900 text-[11px]">ทั้งอีเมลเดิม และอีเมลใหม่</span></p>
+                    <p>2. คุณต้องกดปุ่มยืนยันให้ครบ <span className="font-bold underline text-amber-900 text-[11px]">ทั้งสองอีเมล</span> การเปลี่ยนถึงจะสำเร็จ</p>
+                    <p>3. หากยืนยันไม่ครบ บัญชีจะยังคงใช้เมลเดิมต่อไปเพื่อความปลอดภัยนะคะ</p>
+                  </div>
+                </div>
+
                 <div>
-                  <Label>อีเมล</Label>
+                  <Label>อีเมลปัจจุบัน / อีเมลใหม่</Label>
                   <Input
                     type="email"
                     value={emailForm.email}
@@ -423,11 +423,10 @@ const UpdateProfile = () => {
                   className="w-full"
                 >
                   {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                  บันทึกอีเมล
+                  บันทึกและส่งลิงก์ยืนยัน
                 </Button>
               </Card>
             </TabsContent>
-
           </Tabs>
         </div>
       </div>

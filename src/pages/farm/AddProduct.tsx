@@ -117,64 +117,74 @@ const AddProduct = () => {
     }
 
     try {
-      setSubmitting(true);
+  setSubmitting(true);
 
-      /* ---------- 1. สร้างสินค้า ---------- */
+  /* ---------- 1. เตรียม product id ล่วงหน้า ---------- */
+  const tempProductId = crypto.randomUUID();
 
-      const { data: product, error } = await supabase
-        .from("products")
-        .insert({
-          farm_id: farmId,
-          name: form.name.trim(),
-          description: form.description || null,
-          product_type: form.product_type,
-          price_per_unit: Number(form.price_per_unit),
-          available_quantity: Number(form.available_quantity),
-          unit: form.unit,
-          harvest_date: form.harvest_date,
-          expiry_date: form.expiry_date || null,
-        })
-        .select()
-        .single();
+  /* ---------- 2. Upload รูปก่อน ---------- */
+  const uploaded: { path: string; url: string }[] = [];
 
-      if (error || !product) throw error;
+  if (files.length > 0 && farmId) {
+    for (const file of files) {
+      const path = `${farmId}/${tempProductId}/${crypto.randomUUID()}`;
 
-      /* ---------- 2. Upload รูป ---------- */
+      const { error: uploadError } = await supabase.storage
+        .from("product-images")
+        .upload(path, file);
 
-      const uploaded = await uploadImages(product.id);
+      if (uploadError) throw uploadError;
 
-      /* ---------- 3. บันทึก product_images ---------- */
+      const { data } = supabase.storage
+        .from("product-images")
+        .getPublicUrl(path);
 
-      if (uploaded.length > 0) {
-        await supabase.from("product_images").insert(
-          uploaded.map((img) => ({
-            product_id: product.id,
-            image_path: img.path,
-          }))
-        );
-
-        /* ---------- 4. เก็บรูปแรกลง products ---------- */
-
-        await supabase
-          .from("products")
-          .update({
-            image_url: uploaded[0].url,
-          })
-          .eq("id", product.id);
-      }
-
-      toast.success("เพิ่มสินค้าเรียบร้อย");
-      
-      // ✅ ใช้ replace: true เพื่อแก้ปัญหากด Back แล้วเด้งกลับมาหน้านี้
-      navigate("/farm/products", { replace: true });
-
-    } catch (err: any) {
-      console.error(err);
-      toast.error(err.message || "เกิดข้อผิดพลาด");
-    } finally {
-      setSubmitting(false);
+      uploaded.push({
+        path,
+        url: data.publicUrl,
+      });
     }
-  };
+  }
+
+  /* ---------- 3. เรียก RPC สร้างสินค้า ---------- */
+
+  const { data: productId, error } = await supabase.rpc(
+    "create_product_secure",
+    {
+      p_name: form.name,
+      p_description: form.description || null,
+      p_product_type: form.product_type,
+      p_price: Number(form.price_per_unit),
+      p_quantity: Number(form.available_quantity),
+      p_unit: form.unit,
+      p_harvest_date: form.harvest_date,
+      p_expiry_date: form.expiry_date || null,
+      p_image_url: uploaded[0]?.url || null,
+    }
+  );
+
+  if (error || !productId) throw error;
+
+  /* ---------- 4. บันทึก product_images ---------- */
+
+  if (uploaded.length > 0) {
+    await supabase.from("product_images").insert(
+      uploaded.map((img) => ({
+        product_id: productId,
+        image_path: img.path,
+      }))
+    );
+  }
+
+  toast.success("เพิ่มสินค้าเรียบร้อย");
+  navigate("/farm/products", { replace: true });
+
+} catch (err: any) {
+  console.error(err);
+  toast.error(err.message || "เกิดข้อผิดพลาด");
+} finally {
+  setSubmitting(false);
+}
 
   if (loading) {
     return (
@@ -183,7 +193,7 @@ const AddProduct = () => {
       </div>
     );
   }
-
+  }
   /* ================= UI ================= */
 
   return (
@@ -284,7 +294,7 @@ const AddProduct = () => {
           </div>
 
           <div>
-            <Label>หน่วย</Label>
+            <Label>หน่วย (หวี เครือ ต้น กิโล) </Label>
             <Input
               value={form.unit}
               onChange={(e) => setForm({ ...form, unit: e.target.value })}

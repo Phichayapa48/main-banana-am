@@ -4,7 +4,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { MapPin } from "lucide-react";
 import {
   Package,
   ShoppingCart,
@@ -15,6 +14,7 @@ import {
   Star,
   ArrowLeft,
   ChevronRight,
+  MapPin,
 } from "lucide-react";
 
 /* ---------- Types ---------- */
@@ -46,9 +46,8 @@ interface Product {
   product_type: string;
   harvest_date: string;
   image_url: string | null;
-  is_active?: boolean; // เพิ่มรองรับ filter
+  is_active?: boolean;
 }
-
 
 /* ---------- Component ---------- */
 
@@ -58,7 +57,6 @@ const FarmDashboard = () => {
   const [farm, setFarm] = useState<FarmProfile | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [stats, setStats] = useState<Stats>({
-
     activeProducts: 0,
     totalOrders: 0,
     pendingOrders: 0,
@@ -106,33 +104,31 @@ const FarmDashboard = () => {
       }
 
       setFarm(farmData);
-
-      // ดึงสินค้าทั้งหมด
-      const { data: productsData } = await supabase
+      const { data: productData, error: productError } = await supabase
         .from("products")
         .select("*")
         .eq("farm_id", farmData.id)
         .order("created_at", { ascending: false });
 
-      setProducts(productsData || []);
+      if (productError) throw productError;
 
-      // ดึงออเดอร์ทั้งหมด
-      const { data: orders } = await supabase
-        .from("orders")
-        .select("id, status")
-        .eq("farm_id", farmData.id);
+      setProducts(productData || []);
 
-      // ✨ แก้ไขจุดนี้: ดึงจำนวนการจอง (Reservations) ของฟาร์มเราแทนการ Filter status pending จาก orders
-      const { count: reservationCount } = await supabase
-        .from("reservations")
-        .select("id, products!inner(farm_id)", { count: 'exact', head: true })
-        .eq("products.farm_id", farmData.id);
+      const { data: statsData, error: statsError } =
+        await supabase.rpc("get_farm_dashboard_stats");
+
+      if (statsError) throw statsError;
 
       setStats({
-        activeProducts: productsData?.filter(p => p.is_active !== false).length ?? 0,
-        totalOrders: orders?.length ?? 0,
-        pendingOrders: reservationCount ?? 0, // ✨ ใช้เลขจากการจองจริง
+        activeProducts: statsData.activeProducts,
+        totalOrders: statsData.totalOrders,
+        pendingOrders: statsData.pendingOrders,
       });
+
+      setFarm(prev => prev ? {
+        ...prev,
+        total_sales: statsData.totalSales
+      } : prev);
 
     } catch (err) {
       console.error(err);
@@ -184,7 +180,10 @@ const FarmDashboard = () => {
           <div className="flex justify-between items-start">
             <div>
               <h2 className="text-2xl font-bold">{farm?.farm_name}</h2>
-              <p className="text-muted-foreground">{farm?.farm_location}</p>
+              <p className="text-muted-foreground flex items-center gap-1">
+                <MapPin className="w-4 h-4" />
+                {farm?.farm_location}
+              </p>
               {farm?.farm_description && (
                 <p className="mt-2 text-sm text-muted-foreground">
                   {farm.farm_description}
@@ -204,12 +203,11 @@ const FarmDashboard = () => {
                 onClick={() => navigate(`/farm/reviews/${farm?.id}`)}>
                 {farm?.total_reviews ?? 0} รีวิว
               </p>
-
             </div>
           </div>
         </Card>
 
-        {/* KEY METRICS (INFO ONLY) */}
+        {/* KEY METRICS */}
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-10">
           <InfoCard
             icon={<Package className="w-5 h-5" />}
@@ -229,101 +227,110 @@ const FarmDashboard = () => {
         </div>
 
         {/* MANAGEMENT ACTIONS */}
-<div>
-  <h3 className="text-sm font-semibold text-muted-foreground mb-3">
-    การจัดการ
-  </h3>
-  <div className="grid md:grid-cols-3 gap-4">
-    <ActionRow
-      icon={<Package className="w-5 h-5" />}
-      title="จัดการสินค้า"
-      subtitle="เพิ่ม,แก้ไข,หรือปิดการจองสินค้า"
-      onClick={() => navigate("/farm/products")}
-    />
+        <div>
+          <h3 className="text-sm font-semibold text-muted-foreground mb-3">
+            การจัดการ
+          </h3>
+          <div className="grid md:grid-cols-3 gap-4">
+            <ActionRow
+              icon={<Package className="w-5 h-5" />}
+              title="จัดการสินค้า"
+              subtitle="เพิ่ม,แก้ไข,หรือปิดการจองสินค้า"
+              onClick={() => navigate("/farm/products")}
+            />
 
-    <ActionRow
-      icon={<ShoppingCart className="w-5 h-5" />}
-      title="ออเดอร์"
-      subtitle={`${stats.pendingOrders} รอดำเนินการ`}
-      onClick={() => navigate("/farm/orders")}
-    />
+            <ActionRow
+              icon={<ShoppingCart className="w-5 h-5" />}
+              title="ออเดอร์"
+              subtitle={`${stats.pendingOrders} รอดำเนินการ`}
+              onClick={() => navigate("/farm/orders")}
+            />
 
-    <ActionRow
-      icon={<Settings className="w-5 h-5" />}
-      title="ตั้งค่าฟาร์ม"
-      subtitle="แก้ไขข้อมูลฟาร์มและการตั้งค่า"
-      onClick={() => navigate("/profile")}
-    />
-  </div>
-</div>
+            <ActionRow
+              icon={<Settings className="w-5 h-5" />}
+              title="ตั้งค่าฟาร์ม"
+              subtitle="แก้ไขข้อมูลฟาร์มและการตั้งค่า"
+              onClick={() => navigate("/profile")}
+            />
+          </div>
+        </div>
 
-{/* ===== FARM PRODUCTS ===== */}
-<div className="mt-12">
-  <h3 className="text-lg font-semibold mb-4">สินค้าในร้าน</h3>
-
-  {products.length === 0 ? (
-    <div className="text-center py-20 text-muted-foreground">
-      ยังไม่มีสินค้าในร้าน
-    </div>
-  ) : (
-    <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-      {products.map((p) => (
-        <Card
-          key={p.id}
-          className="cursor-pointer hover:shadow-md transition"
-          onClick={() => navigate(`/market/product/${p.id}`)}
-        >
-          <div className="aspect-video bg-muted flex items-center justify-center">
-            {p.image_url ? (
-              <img
-                src={p.image_url}
-                className="w-full h-full object-cover"
-                alt={p.name}
-              />
-            ) : (
-              <span className="text-5xl">🍌</span>
-            )}
+        {/* ===== FARM PRODUCTS ===== */}
+        <div className="mt-12">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-lg font-semibold">สินค้าในร้าน</h3>
+            <Button 
+              size="sm" 
+              variant="outline" 
+              onClick={() => navigate("/farm/products")}
+            >
+              ดูทั้งหมด
+            </Button>
           </div>
 
-          <div className="p-5">
-            <h3 className="font-semibold text-lg">{p.name}</h3>
-
-            <p className="text-sm text-muted-foreground line-clamp-2 mb-4">
-              {p.description || "Fresh quality produce"}
-            </p>
-
-            <div className="flex justify-between items-end">
-              <div>
-                <p className="text-xl font-bold text-primary">
-                  ฿{p.price_per_unit}
-                  <span className="text-sm text-muted-foreground">
-                    /{p.unit}
-                  </span>
-                </p>
-
-                <p className="text-xs text-muted-foreground">
-                  {p.available_quantity} {p.unit} available
-                </p>
-              </div>
-
-              <span className="text-xs px-3 py-1 rounded-full bg-muted">
-                {p.product_type}
-              </span>
+          {products.length === 0 ? (
+            <div className="text-center py-20 text-muted-foreground bg-white rounded-xl border border-dashed">
+              ยังไม่มีสินค้าในร้าน
             </div>
+          ) : (
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {products.map((p) => (
+                <Card
+                  key={p.id}
+                  className="cursor-pointer hover:shadow-md transition overflow-hidden"
+                  onClick={() => navigate(`/market/product/${p.id}`)}
+                >
+                  <div className="aspect-video bg-muted flex items-center justify-center relative">
+                    {p.image_url ? (
+                      <img
+                        src={p.image_url}
+                        className="w-full h-full object-cover"
+                        alt={p.name}
+                      />
+                    ) : (
+                      <span className="text-5xl">🍌</span>
+                    )}
+                    {/* Badge ประเภทภาษาไทย */}
+                    <div className="absolute top-2 right-2">
+                      <span className="text-[10px] px-2 py-1 rounded-md bg-white/90 font-bold shadow-sm">
+                        {p.product_type === "fruit" ? "ผล" : p.product_type === "shoot" ? "หน่อ" : p.product_type}
+                      </span>
+                    </div>
+                  </div>
 
-            <p className="text-xs text-muted-foreground mt-3">
-              Harvest: {new Date(p.harvest_date).toLocaleDateString()}
-            </p>
-          </div>
-        </Card>
-      ))}
-    </div>
-  )}
-</div>
+                  <div className="p-5">
+                    <h3 className="font-semibold text-lg line-clamp-1">{p.name}</h3>
 
+                    <p className="text-sm text-muted-foreground line-clamp-2 mb-4 h-10">
+                      {p.description || "Fresh quality produce"}
+                    </p>
+
+                    <div className="flex justify-between items-end">
+                      <div>
+                        <p className="text-xl font-bold text-primary">
+                          ฿{p.price_per_unit.toLocaleString()}
+                          <span className="text-sm text-muted-foreground font-normal">
+                            /{p.unit}
+                          </span>
+                        </p>
+
+                        <p className="text-xs text-muted-foreground">
+                          คงเหลือ: {p.available_quantity} {p.unit}
+                        </p>
+                      </div>
+                    </div>
+
+                    <p className="text-[10px] text-muted-foreground mt-3 pt-3 border-t uppercase font-medium">
+                      เก็บเกี่ยว: {new Date(p.harvest_date).toLocaleDateString("th-TH")}
+                    </p>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
-
   );
 };
 
@@ -338,13 +345,13 @@ const InfoCard = ({
   label: string;
   value: number | string;
 }) => (
-  <Card className="p-4 flex items-center gap-3 bg-muted/40">
-    <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center">
+  <Card className="p-4 flex items-center gap-3 bg-muted/40 border-none shadow-sm">
+    <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center text-primary">
       {icon}
     </div>
     <div>
       <p className="text-lg font-bold leading-none">{value}</p>
-      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="text-xs text-muted-foreground mt-1">{label}</p>
     </div>
   </Card>
 );
@@ -361,21 +368,20 @@ const ActionRow = ({
   onClick: () => void;
 }) => (
   <Card
-    className="p-4 flex items-center justify-between cursor-pointer hover:bg-accent transition"
+    className="p-4 flex items-center justify-between cursor-pointer hover:bg-accent transition border-none shadow-sm bg-white"
     onClick={onClick}
   >
     <div className="flex items-center gap-4">
-      <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center">
+      <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center text-primary">
         {icon}
       </div>
       <div>
-        <p className="font-medium">{title}</p>
+        <p className="font-semibold text-sm">{title}</p>
         <p className="text-xs text-muted-foreground">{subtitle}</p>
       </div>
     </div>
     <ChevronRight className="w-4 h-4 text-muted-foreground" />
   </Card>
 );
-
 
 export default FarmDashboard;

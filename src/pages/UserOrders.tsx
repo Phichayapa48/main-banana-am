@@ -14,19 +14,26 @@ import { Textarea } from "@/components/ui/textarea";
 import { ArrowLeft } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Separator } from "@/components/ui/separator";
 
 /* ---------- Types ---------- */
 
 interface ShippingOrder {
   id: string;
+  order_number: string;
   user_id: string;
   farm_id: string;
   product_id: string;
   quantity: number;
+  total_price: number;
   created_at: string;
   shipped_at: string;
   carrier: string | null;
   tracking_number: string | null;
+  receiver_name: string | null;
+  receiver_phone: string | null;
+  delivery_address: string | null;
+  delivery_notes: string | null;
 
   products: {
   name: string;
@@ -40,11 +47,17 @@ interface ShippingOrder {
 };
 }
 
-
 interface ConfirmedOrder {
   id: string;
   quantity: number;
   created_at: string;
+  total_price: number;
+  order_number: string;
+  shipped_at: string;
+  receiver_name: string | null;
+  receiver_phone: string | null;
+  delivery_address: string | null;
+  delivery_notes: string | null;
 
   products: {
     name: string;
@@ -58,11 +71,15 @@ interface ConfirmedOrder {
   };
 }
 
-
 interface Reservation {
   id: string;
   quantity: number;
   created_at: string;
+  total_price: number;
+  receiver_name: string | null;
+  receiver_phone: string | null;
+  delivery_address: string | null;
+  delivery_notes: string | null;
 
   products: {
     name: string;
@@ -75,7 +92,6 @@ interface Reservation {
     } | null;
   };
 }
-
 
 interface ReviewedOrder {
   id: string;
@@ -109,9 +125,17 @@ interface ToReviewOrder {
   carrier: string | null;
   tracking_number: string | null;
 
+  total_price: number;
+  order_number: string;
+  receiver_name: string | null;
+  receiver_phone: string | null;
+  delivery_address: string | null;
+  delivery_notes: string | null;
+
   products: {
     name: string;
     product_type: string;
+    harvest_date: string | null;
 
     farm_profiles?: {
       farm_name: string;
@@ -119,15 +143,28 @@ interface ToReviewOrder {
   };
 }
 
+interface CancelledReservation {
+  id: string;
+  quantity: number;
+  created_at: string;
+  cancelled_at: string | null;
+  cancelled_by: string | null;
+  cancel_reason: string | null;
 
-
+  products: {
+    name: string;
+    product_type: string;
+    farm_profiles?: {
+      farm_name: string;
+    } | null;
+  };
+}
 
 
 /* ---------- Component ---------- */
 
 const UserOrders = () => {
   const navigate = useNavigate();
-
   const [shipping, setShipping] = useState<ShippingOrder[]>([]);
   const [confirmed, setConfirmed] = useState<ConfirmedOrder[]>([]);
   const [pending, setPending] = useState<Reservation[]>([]);
@@ -135,7 +172,7 @@ const UserOrders = () => {
   /* REVIEW */
   const [openReview, setOpenReview] = useState(false);
   const [selectedOrder, setSelectedOrder] =
-    useState<ShippingOrder | null>(null);
+    useState<ToReviewOrder | null>(null);
   const [rating, setRating] = useState(5);
   const [comment, setComment] = useState("");
   const formatDate = (d?: string | null) =>
@@ -143,8 +180,11 @@ const UserOrders = () => {
   const [history, setHistory] = useState<ReviewedOrder[]>([]);
   const [toReview, setToReview] = useState<ToReviewOrder[]>([]);
   const [tab, setTab] = useState("pending");
-
-
+  const [cancelledReservations, setCancelledReservations] = useState<CancelledReservation[]>([]);
+  const [openCancel, setOpenCancel] = useState(false);
+  const [selectedReservation, setSelectedReservation] =
+  useState<Reservation | null>(null);
+  const [cancelReason, setCancelReason] = useState("");
 
 
   /* ---------- LOAD DATA ---------- */
@@ -163,7 +203,7 @@ const UserOrders = () => {
 
       if (!user) return;
 
-      const [shippingRes, confirmedRes, pendingRes, toReviewRes, historyRes] = await Promise.all([
+      const [shippingRes, confirmedRes, pendingRes, toReviewRes, historyRes,cancelledRes] = await Promise.all([
         supabase
           .from("orders")
           .select(`
@@ -176,6 +216,12 @@ const UserOrders = () => {
             shipped_at,
             carrier,
             tracking_number,
+            order_number,
+            receiver_name,
+            receiver_phone,
+            delivery_address,
+            delivery_notes,
+            total_price,
             products (
               name,
               product_type,
@@ -198,6 +244,12 @@ const UserOrders = () => {
             id,
             quantity,
             created_at,
+            total_price,
+            order_number,
+            receiver_name,
+            receiver_phone,
+            delivery_address,
+            delivery_notes,
             products (
               name,
               product_type,
@@ -208,6 +260,7 @@ const UserOrders = () => {
               )
             )
           `)
+
 
           .eq("user_id", user.id)
           .eq("status", "confirmed")
@@ -218,7 +271,11 @@ const UserOrders = () => {
           .select(`
             id,
             quantity,
+            total_price,
             created_at,
+            receiver_name,
+            receiver_phone,
+            delivery_address,
             products (
               name,
               product_type,
@@ -231,6 +288,7 @@ const UserOrders = () => {
 
           `)
           .eq("user_id", user.id)
+          .eq("status", "pending")
           .order("created_at", { ascending: false }),
         
           supabase
@@ -276,7 +334,27 @@ const UserOrders = () => {
               )
             `)
             .eq("user_id", user.id)
-            .eq("status", "reviewed")
+            .eq("status", "reviewed"),
+            
+            supabase
+              .from("reservations")
+              .select(`
+                id,
+                quantity,
+                created_at,
+                cancelled_at,
+                cancelled_by,
+                cancel_reason,
+                products (
+                  name,
+                  product_type,
+                  farm_profiles (
+                    farm_name
+                  )
+                )
+              `)
+              .eq("user_id", user.id)
+              .eq("status", "cancelled"),
 
 
       ]);
@@ -286,6 +364,7 @@ const UserOrders = () => {
       setPending(pendingRes.data || []);
       setToReview(toReviewRes.data || []);
       setHistory(historyRes.data || []);
+      setCancelledReservations(cancelledRes.data || []);
     } catch {
       toast.error("โหลดออเดอร์ไม่สำเร็จ");
     } finally {
@@ -318,98 +397,55 @@ const UserOrders = () => {
     }
   };
 
-  const cancelReservation = async (reservationId: string) => {
+  const cancelReservation = async (
+  reservationId: string,
+  reason: string
+) => {
   try {
+    const { error } = await supabase.rpc("cancel_reservation", {
+      p_reservation_id: reservationId,
+      p_reason: reason,
+    });
 
-    // ⭐ 1. ดึงข้อมูล reservation
-    const { data: reservation, error: fetchError } = await supabase
-      .from("reservations")
-      .select("product_id, quantity")
-      .eq("id", reservationId)
-      .single();
-
-    if (fetchError) throw fetchError;
-
-    // ⭐ 2. คืน stock ให้สินค้า
-    const { error: stockError } = await supabase.rpc(
-  "increase_product_quantity",
-  {
-    product_id_input: reservation.product_id,
-    qty_input: reservation.quantity,
-  }
-);
-
-
-    if (stockError) throw stockError;
-
-    // ⭐ 3. ลบ reservation
-    const { error: deleteError } = await supabase
-      .from("reservations")
-      .delete()
-      .eq("id", reservationId);
-
-    if (deleteError) throw deleteError;
+    if (error) throw error;
 
     toast.success("ยกเลิกการจองแล้ว");
 
     await loadAll();
-
-  } catch (e) {
+  } catch (e: any) {
     console.error(e);
-    toast.error("ยกเลิกการจองไม่ได้");
+    toast.error(e.message || "ยกเลิกการจองไม่ได้");
   }
 };
+
 
   const submitReview = async () => {
   if (!selectedOrder) return;
 
-  if (!selectedOrder.farm_id) {
-    toast.error("ไม่พบข้อมูลฟาร์มของออเดอร์นี้");
-    return;
+  try {
+    const { error } = await supabase.rpc("insert_review", {
+      p_order_id: selectedOrder.id,
+      p_rating: rating,
+      p_comment: comment,
+    });
+
+    if (error) throw error;
+
+    toast.success("ขอบคุณสำหรับรีวิว 🌟");
+
+    setOpenReview(false);
+    setSelectedOrder(null);
+    setRating(5);
+    setComment("");
+
+    await loadAll();
+  } catch (e: any) {
+    console.error(e);
+    toast.error(e.message || "รีวิวไม่สำเร็จ");
   }
-
-    try {
-      /* ป้องกันรีวิวซ้ำ */
-      const { data: exist } = await supabase
-        .from("reviews")
-        .select("id")
-        .eq("order_id", selectedOrder.id)
-        .maybeSingle();
-
-      if (exist) {
-        toast.error("ออเดอร์นี้รีวิวแล้ว");
-        return;
-      }
-
-      const { error } = await supabase.from("reviews").insert({
-        order_id: selectedOrder.id,
-        product_id: selectedOrder.product_id,
-        farm_id: selectedOrder.farm_id,
-        user_id: selectedOrder.user_id,
-        rating,
-        comment,
-      });
-
-      if (error) throw error;
-
-      await supabase
-        .from("orders")
-        .update({ status: "reviewed" })
-        .eq("id", selectedOrder.id);
-
-      toast.success("ขอบคุณสำหรับรีวิว 🌟");
-
-      setOpenReview(false);
-      setSelectedOrder(null);
-      setRating(5);
-      setComment("");
-      await loadAll();
-    } catch (e: any) {
-      console.error("Cancel reservation error:", e);
-      toast.error(e.message || "ยกเลิกการจองไม่ได้");
-    }
-
-  };
+};
+  
+  
 
   /* ---------- LOADING ---------- */
 
@@ -433,12 +469,13 @@ const UserOrders = () => {
       <div className="container mx-auto px-4 max-w-6xl space-y-6 py-6">
         {/* ---------- Tabs ---------- */}
         <Tabs value={tab} onValueChange={(v) => setTab(v as any)}>
-          <TabsList className="grid grid-cols-5 w-full">
-            <TabsTrigger value="shipping">กำลังจัดส่ง</TabsTrigger>
-            <TabsTrigger value="confirmed">ฟาร์มยืนยันแล้ว</TabsTrigger>
+          <TabsList className="grid grid-cols-6 w-full">
             <TabsTrigger value="pending">รอยืนยัน</TabsTrigger>
+            <TabsTrigger value="confirmed">ฟาร์มยืนยันแล้ว</TabsTrigger>
+            <TabsTrigger value="shipping">กำลังจัดส่ง</TabsTrigger>
             <TabsTrigger value="review">ยังไม่ได้รีวิว</TabsTrigger>
             <TabsTrigger value="history">ประวัติ</TabsTrigger>
+            <TabsTrigger value="cancelled">ยกเลิกแล้ว</TabsTrigger>
           </TabsList>
         </Tabs>
 
@@ -446,132 +483,271 @@ const UserOrders = () => {
         {tab === "shipping" && (
           <Card className="p-6 space-y-4">
             {shipping.length === 0 && <p>ไม่มีรายการ</p>}
-
             {shipping.map((o) => (
-              <div key={o.id} className="border rounded p-4 space-y-2">
-                <div className="flex justify-between">
-                  <div>
-                    <p className="font-semibold">{o.products.name}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {o.products.product_type} • {o.quantity} ชิ้น
-                    </p>
-                    <p>ฟาร์ม : {o.products.farm_profiles?.farm_name || "-"}</p>
+              <Card
+                key={o.id}
+                className="p-0 overflow-hidden hover:shadow-md transition-shadow" >
+                {/* STATUS BAR */}
+                <div className="flex justify-between items-center bg-orange-50 px-4 py-2 border-b">
+                  <p className="text-sm font-medium text-orange-600">🚚 กำลังจัดส่ง</p> </div>
+
+                {/* MAIN CONTENT */}
+                <div className="p-4 space-y-3">
+
+                      {/* PRODUCT + FARM */}
+                      <div className="space-y-1">
+                        <p className="font-semibold text-lg">{o.products.name}</p>
+                        <p className="text-sm text-muted-foreground">{o.products.product_type} • {o.quantity} ชิ้น</p>
+                        <p className="text-sm"> ราคารวม : <span className="font-medium ml-1"> {o.total_price || "-"}</span></p>
+                        <p className="text-sm"> ฟาร์ม : <span className="font-medium ml-1"> {o.products.farm_profiles?.farm_name || "-"}</span></p>
+                        <p className="text-sm"> เลขออเดอร์ : <span className="font-medium ml-1"> {o.order_number || "-"}
+                          </span>
+                        </p>
+                      </div>
+
+                      {/* DIVIDER */}
+                      <div className="border-t" />
+
+                      {/* SHIPPING INFO */}
+                      <div className="grid grid-cols-2 gap-2 text-sm">
+
+                        <p> 🚚 ขนส่ง : <span className="font-medium ml-1"> {o.carrier || "-"}</span></p>
+                        <p> 📦 หมายเลขติดตามพัสดุ : <span className="font-medium ml-1"> {o.tracking_number || "-"} </span> </p>
+                        <p>📅 วันที่จอง : {formatDate(o.created_at)}</p>
+                        <p>🌾 เก็บเกี่ยว : {formatDate(o.products?.harvest_date)}</p>
+                        <p className="col-span-2"> 🚛 วันจัดส่ง : {formatDate(o.shipped_at)} </p> 
+                        </div>
+                        <div className="border-t" />
+                   
+                        <div className="space-y-1 text-sm">
+                          <p className="font-semibold">ข้อมูลการจัดส่ง</p>
+                          <p> ผู้รับ : <span className="font-medium ml-1"> {o.receiver_name || "-"} </span> </p>
+                          <p> เบอร์โทร : <span className="font-medium ml-1"> {o.receiver_phone || "-"} </span> </p>
+                          <p> ที่อยู่ : <span className="font-medium ml-1"> {o.delivery_address || "-"} </span> </p>
+                          {o.delivery_notes && (
+                          <p> หมายเหตุ : <span className="font-medium ml-1"> {o.delivery_notes} </span></p>)} </div>
+
+                        {/* ACTION */}
+                        <div className="flex justify-end pt-2"><Button
+                            className="bg-orange-500 hover:bg-orange-600"
+                            onClick={() => confirmReceived(o)} > ได้รับสินค้าแล้ว </Button>
+                        </div>
+                      </div>
+                    </Card>
+                  ))}
+                  </Card>
+                  )}
+
+      {/* ---------- CONFIRMED ---------- */}
+          {tab === "confirmed" && (
+            <Card className="p-6 space-y-4">
+              {confirmed.length === 0 && <p>ไม่มีรายการ</p>}
+              {confirmed.map((o) => (
+                <Card key={o.id} className="p-0 overflow-hidden hover:shadow-md transition-shadow" >
+                  {/* STATUS BAR */}
+                  <div className="flex justify-between items-center bg-green-50 px-4 py-2 border-b">
+                    <p className="text-sm font-medium text-green-600"> 🌾 ฟาร์มยืนยันแล้ว </p> </div>
+
+                  {/* MAIN CONTENT */}
+                  <div className="p-4 space-y-3">
+
+                    {/* PRODUCT + FARM */}
+                     <div className="space-y-1">
+                        <p className="font-semibold text-lg">{o.products.name}</p>
+                        <p className="text-sm text-muted-foreground">{o.products.product_type} • {o.quantity} ชิ้น</p>
+                        <p className="text-sm"> ราคารวม : <span className="font-medium ml-1"> {o.total_price || "-"}</span></p>
+                        <p className="text-sm"> ฟาร์ม : <span className="font-medium ml-1"> {o.products.farm_profiles?.farm_name || "-"}</span></p>
+                        <p className="text-sm"> เลขออเดอร์ : <span className="font-medium ml-1"> {o.order_number || "-"}</span></p>
+                      </div>
+
+                    {/* DIVIDER */}
+                    <div className="border-t" />
+
+                    {/* PRODUCT INFO */}
+                    <div className="space-y-1 text-sm"> <p className="font-semibold">เกี่ยวกับสินค้า</p>
+                      <p> 📅 วันที่จอง : {formatDate(o.created_at)}</p>
+                      <p> 🌾 ฟาร์มเก็บเกี่ยว : {" "} {formatDate(o.products?.harvest_date)} </p>
+                      <p> 🚚 วันที่ฟาร์มคาดว่าจะจัดส่ง : {" "} {formatDate(o.products?.expiry_date)} </p>
+                    </div>
+
+                    <div className="border-t" /> 
+                        <div className="space-y-1 text-sm">
+                          <p className="font-semibold">ข้อมูลการจัดส่ง</p>
+                          <p> ผู้รับ : <span className="font-medium ml-1"> {o.receiver_name || "-"} </span> </p>
+                          <p> เบอร์โทร : <span className="font-medium ml-1"> {o.receiver_phone || "-"} </span> </p>
+                          <p> ที่อยู่ : <span className="font-medium ml-1"> {o.delivery_address || "-"} </span> </p>
+                          {o.delivery_notes && (
+                          <p> หมายเหตุ : <span className="font-medium ml-1"> {o.delivery_notes} </span></p>)} </div>
                   </div>
-                  <Badge>Shipped</Badge>
-                </div>
+                </Card>
+              ))}
+            </Card>
+          )}
 
-                <p>ขนส่ง : {o.carrier || "-"}</p>
-                <p>หมายเลขพัสดุ : {o.tracking_number || "-"}</p>
-                <p>วันที่จอง : {formatDate(o.created_at)}</p>        
-                <p>ฟาร์มเก็บเกี่ยว : {formatDate(o.products?.harvest_date)}</p>
-                <p>วันจัดส่ง : {formatDate(o.shipped_at)}</p>
+         {/* ---------- PENDING ---------- */}
+          {tab === "pending" && (
+            <Card className="p-6 space-y-4">
+              {pending.length === 0 && <p>ไม่มีรายการ</p>}
+              {pending.map((r) => (
+                <Card key={r.id} className="p-0 overflow-hidden hover:shadow-md transition-shadow" >
+                  {/* STATUS BAR */}
+                  <div className="flex justify-between items-center bg-yellow-50 px-4 py-2 border-b">
+                    <p className="text-sm font-medium text-yellow-600"> ⏳ รอฟาร์มยืนยัน </p> </div>
 
+                  {/* MAIN CONTENT */}
+                  <div className="p-4 space-y-3">
 
-                <Button onClick={() => confirmReceived(o)}>
-                  ได้รับของแล้ว
-                </Button>
-              </div>
-            ))}
-          </Card>
-        )}
+                    {/* PRODUCT + FARM */}
+                   <div className="space-y-1">
+                        <p className="font-semibold text-lg">{r.products.name}</p>
+                        <p className="text-sm text-muted-foreground">{r.products.product_type} • {r.quantity} ชิ้น</p>
+                        <p className="text-sm"> ราคารวม : <span className="font-medium ml-1"> {r.total_price || "-"}</span></p>
+                        <p className="text-sm"> ฟาร์ม : <span className="font-medium ml-1"> {r.products.farm_profiles?.farm_name || "-"}</span></p>
+                        <p className="text-sm"> เลขการจอง : <span className="font-medium ml-1"> {r.id || "-"}</span></p>
+                      </div>
+                    {/* DIVIDER */}
+                    <div className="border-t" />
 
-        {/* ---------- CONFIRMED ---------- */}
-        {tab === "confirmed" && (
-          <Card className="p-6 space-y-4">
-            {confirmed.length === 0 && <p>ไม่มีรายการ</p>}
-
-            {confirmed.map((o) => (
-              <div key={o.id} className="border rounded p-4">
-                <p className="font-semibold">{o.products.name}</p>
-                <p>{o.products.product_type} • {o.quantity}</p>
-                <p>วันที่จอง : {formatDate(o.created_at)}</p>
-                <p className="font-bold pt-2">เกี่ยวกับสินค้า</p>
-                <p>ฟาร์ม : {o.products.farm_profiles?.farm_name || "-"}</p>
-                <p>ฟาร์มเก็บเกี่ยว : {formatDate(o.products?.harvest_date)}</p>
-                <p>วันที่ฟาร์มคาดว่าจะจัดส่ง : {formatDate(o.products?.expiry_date)}</p>
-
-              </div>
-            ))}
-          </Card>
-        )}
-
-        {/* ---------- PENDING ---------- */}
-        {tab === "pending" && (
-          <Card className="p-6 space-y-4">
-            {pending.length === 0 && <p>ไม่มีรายการ</p>}
-
-            {pending.map((r) => (
-              <div key={r.id} className="border rounded p-4">
-                <p className="font-semibold">{r.products.name}</p>
-                <p>{r.products.product_type} • {r.quantity} </p>
-                <p>วันที่จอง : {formatDate(r.created_at)}</p>
-                <p className="font-bold pt-2">เกี่ยวกับสินค้า</p>
-                <p>ฟาร์ม : {r.products.farm_profiles?.farm_name || "-"}</p>
-                <p>ฟาร์มเก็บเกี่ยว : {formatDate(r.products?.harvest_date)}</p>
-                <p>วันที่ฟาร์มคาดว่าจะจัดส่ง : {formatDate(r.products?.expiry_date)}</p>
-
-                <Button
-                  variant="destructive"
-                  onClick={() => {
-                    if (confirm("ต้องการยกเลิกออเดอร์นี้หรือไม่ ?")) {
-                      cancelReservation(r.id);
-                    }
-                  }}
-                >
-                  ยกเลิกออเดอร์
-                </Button>
+                    {/* PRODUCT INFO */}
+                    <div className="space-y-1 text-sm"> <p className="font-semibold">เกี่ยวกับสินค้า</p>
+                      <p> 📅 วันที่จอง : {formatDate(r.created_at)}</p>
+                      <p> 🌾 ฟาร์มเก็บเกี่ยว : {" "} {formatDate(r.products?.harvest_date)} </p>
+                      <p> 🚚 วันที่ฟาร์มคาดว่าจะจัดส่ง :{" "} {formatDate(r.products?.expiry_date)}</p>
+                    </div>
+                    <div className="border-t" /> 
+                        <div className="space-y-1 text-sm">
+                          <p className="font-semibold">ข้อมูลการจัดส่ง</p>
+                          <p> ผู้รับ : <span className="font-medium ml-1"> {r.receiver_name || "-"} </span> </p>
+                          <p> เบอร์โทร : <span className="font-medium ml-1"> {r.receiver_phone || "-"} </span> </p>
+                          <p> ที่อยู่ : <span className="font-medium ml-1"> {r.delivery_address || "-"} </span> </p>
+                          {r.delivery_notes && (
+                          <p> หมายเหตุ : <span className="font-medium ml-1"> {r.delivery_notes} </span></p>)} </div>
+                  </div>
+                      
+                    {/* ACTION */}
+                      <div className="flex justify-end pt-2"><Button
+                            className="bg-orange-500 hover:bg-orange-600"
+                        onClick={() => {
+                          setSelectedReservation(r);
+                          setOpenCancel(true);
+                        }} > ยกเลิกออเดอร์ </Button> </div>
+                </Card>
+              ))}
+            </Card>
+          )}
 
 
-              </div>
-            ))}
-          </Card>
-        )}
 
-        {/* ---------- TO REVIEW ---------- */}
-        {tab === "review" && (
-          <Card className="p-6 space-y-4">
-            {toReview.length === 0 && <p>ไม่มีรายการ</p>}
+          {/* ---------- TO REVIEW ---------- */}
+          {tab === "review" && (
+            <Card className="p-6 space-y-4">
+              {toReview.length === 0 && <p>ไม่มีรายการ</p>}
+              {toReview.map((o) => (
+                <Card key={o.id} className="p-0 overflow-hidden hover:shadow-md transition-shadow" >
+                  {/* STATUS BAR */}
+                  <div className="flex justify-between items-center bg-green-50 px-4 py-2 border-b">
+                    <p className="text-sm font-medium text-green-600"> รายการที่ยังไม่ได้รีวิว </p> </div>
 
-            {toReview.map((o) => (
-              <div key={o.id} className="border rounded p-4 space-y-2">
-                <p className="font-semibold">{o.products.name}</p>
-                <p>{o.products.product_type} • {o.quantity} </p>
-                <p>ฟาร์ม : {o.products.farm_profiles?.farm_name || "-"}</p>
-                <p>ขนส่ง : {o.carrier || "-"}</p>
-                <p>หมายเลขพัสดุ : {o.tracking_number || "-"}</p>
-                <p>วันที่จอง : {formatDate(o.created_at)}</p> 
-                <p>วันจัดส่ง : {formatDate(o.shipped_at)}</p>
+                  {/* MAIN CONTENT */}
+                  <div className="p-4 space-y-3">
 
-                <Button
-                  onClick={() => {
-                    setSelectedOrder(o as ShippingOrder);
-                    setOpenReview(true);
-                  }}
-                >
-                  รีวิวสินค้า
-                </Button>
-              </div>
-            ))}
-          </Card>
-        )}
+                    {/* PRODUCT + FARM */}
+                     <div className="space-y-1">
+                        <p className="font-semibold text-lg">{o.products.name}</p>
+                        <p className="text-sm text-muted-foreground">{o.products.product_type} • {o.quantity} ชิ้น</p>
+                        <p className="text-sm"> ราคารวม : <span className="font-medium ml-1"> {o.total_price || "-"}</span></p>
+                        <p className="text-sm"> ฟาร์ม : <span className="font-medium ml-1"> {o.products.farm_profiles?.farm_name || "-"}</span></p>
+                        <p className="text-sm"> เลขออเดอร์ : <span className="font-medium ml-1"> {o.order_number || "-"}</span></p>
+                      </div>
+
+                    {/* DIVIDER */}
+                    <div className="border-t" />
+
+                    {/* PRODUCT INFO */}
+                    <div className="space-y-1 text-sm"> <p className="font-semibold">เกี่ยวกับสินค้า</p>
+                      <p> 📅 วันที่จอง : {formatDate(o.created_at)}</p>
+                      <p> 🌾 ฟาร์มเก็บเกี่ยว : {" "} {formatDate(o.products?.harvest_date)} </p>
+                      <p className="col-span-2"> 🚛 วันจัดส่ง : {formatDate(o.shipped_at)} </p> 
+                    </div>
+
+                    <div className="border-t" /> 
+                        <div className="space-y-1 text-sm">
+                          <p className="font-semibold">ข้อมูลการจัดส่ง</p>
+                          <p> ผู้รับ : <span className="font-medium ml-1"> {o.receiver_name || "-"} </span> </p>
+                          <p> เบอร์โทร : <span className="font-medium ml-1"> {o.receiver_phone || "-"} </span> </p>
+                          <p> ที่อยู่ : <span className="font-medium ml-1"> {o.delivery_address || "-"} </span> </p>
+                          {o.delivery_notes && (
+                          <p> หมายเหตุ : <span className="font-medium ml-1"> {o.delivery_notes} </span></p>)} </div>
+                  </div>
+
+                  <div className="flex justify-end pt-2">
+                      <Button
+                        variant="destructive"
+                        onClick={() => { setSelectedOrder(o);
+                              setOpenReview(true);
+                            }} > รีวิวสินค้า </Button> </div>
+                </Card>
+              ))}
+            </Card>
+          )}
+
 
         {/* ---------- HISTORY ---------- */}
-        {tab === "history" && (
-          <Card className="p-6 space-y-4">
-            {history.length === 0 && <p>ไม่มีรายการ</p>}
+{tab === "history" && (
+  <Card className="p-6 space-y-4">
+    {history.length === 0 && <p>ไม่มีรายการ</p>}
+    {history.map((o) => {
+      const review = Array.isArray(o.reviews) ? o.reviews[0] : o.reviews;
 
-            {history.map((o) => (
-              <div key={o.id} className="border rounded p-4">
-                <p className="font-semibold">{o.products.name}</p>
-                <p>ฟาร์ม : {o.products.farm_profiles?.farm_name || "-"}</p>
-                <p>วันที่จอง : {formatDate(o.created_at)}</p>     
-                
-                <p> ⭐ {o.reviews?.rating}/5</p>
-                <p> รีวิว : {o.reviews?.comment}</p>
-              </div>
-            ))}
-          </Card>
-        )}
+      return (
+        <Card
+          key={o.id}
+          className="p-4 space-y-2 hover:shadow-md transition-shadow">
+          <p className="font-semibold text-lg">{o.products.name}</p>
+          <p className="text-sm text-muted-foreground">{o.products.product_type} • {o.quantity} ชิ้น </p>
+          <p className="text-sm">ฟาร์ม :{" "}
+            <span className="font-medium ml-1">{o.products.farm_profiles?.farm_name || "-"}</span>
+          </p>
+          <p className="text-sm">วันที่จอง : {formatDate(o.created_at)}</p>
+          <div className="border-t pt-2 space-y-1 text-sm">
+            <p>⭐ คะแนน : {review?.rating ?? "-"} / 5</p>
+            <p>รีวิว : {review?.comment || "-"}</p>
+          </div>
+        </Card>
+      );
+    })}
+  </Card>
+)}
+
+
+{/* ---------- CANCELLED ---------- */}
+{tab === "cancelled" && (
+  <Card className="p-6 space-y-4">
+    {cancelledReservations.length === 0 && <p>ไม่มีรายการ</p>}
+
+    {cancelledReservations.map((r) => (
+      <Card
+        key={r.id} className="p-4 space-y-2 hover:shadow-md transition-shadow">
+        <p className="font-semibold text-lg">{r.products.name} </p>
+        <p className="text-sm text-muted-foreground">{r.products.product_type} • {r.quantity} ชิ้น </p>
+        <p className="text-sm">ฟาร์ม :{" "}<span className="font-medium ml-1">
+            {r.products.farm_profiles?.farm_name || "-"}</span></p>
+        <p className="text-sm">วันที่จอง : {formatDate(r.created_at)}</p>
+        <p className="text-sm">วันที่ยกเลิก : {formatDate(r.cancelled_at)}</p>
+      <p className="text-sm">ยกเลิกโดย :{" "} <span className="font-medium ml-1">
+          {r.cancelled_by === "user"
+            ? "คุณ"
+            : r.cancelled_by === "farm"
+            ? "ฟาร์ม"
+            : "-"}
+        </span>
+        <p className="text-sm"> เหตุผล : {r.cancel_reason || "-"} </p> </p>
+        <Badge variant="destructive">Cancelled</Badge>
+      </Card>
+    ))}
+  </Card>
+)}
+
       </div>
 
       {/* REVIEW MODAL */}
@@ -595,20 +771,57 @@ const UserOrders = () => {
                 </Button>
               ))}
             </div>
-
+            
             <Textarea
               placeholder="เขียนรีวิว..."
               value={comment}
               onChange={(e) => setComment(e.target.value)}
             />
-
             <Button onClick={submitReview} className="w-full">
               ส่งรีวิว
             </Button>
           </div>
         </DialogContent>
       </Dialog>
+
+
+
+      <Dialog open={openCancel} onOpenChange={setOpenCancel}>
+  <DialogContent>
+    <DialogHeader>
+      <DialogTitle>เหตุผลในการยกเลิก</DialogTitle>
+    </DialogHeader>
+
+    <div className="space-y-4">
+      <Textarea
+        placeholder="กรอกเหตุผล..."
+        value={cancelReason}
+        onChange={(e) => setCancelReason(e.target.value)}
+      />
+
+      <Button
+        variant="destructive"
+        onClick={async () => {
+          if (!selectedReservation) return;
+
+          await cancelReservation(
+            selectedReservation.id,
+            cancelReason
+          );
+
+          setCancelReason("");
+          setSelectedReservation(null);
+          setOpenCancel(false);
+        }}
+        className="w-full"
+      >
+        ยืนยันการยกเลิก
+      </Button>
+    </div>
+  </DialogContent>
+</Dialog>
     </div>
   );
-}
+};
+
 export default UserOrders;

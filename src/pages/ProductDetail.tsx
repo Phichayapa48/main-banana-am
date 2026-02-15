@@ -63,6 +63,10 @@ const ProductDetail = () => {
   const [receiverName, setReceiverName] = useState("");
   const [receiverPhone, setReceiverPhone] = useState("");
 
+  const [savedFullName, setSavedFullName] = useState<string | null>(null);
+  const [savedPhone, setSavedPhone] = useState<string | null>(null);
+
+
 
 
   /* ---------- Load Product ---------- */
@@ -114,36 +118,39 @@ const ProductDetail = () => {
   /* ---------- Load User Address ---------- */
 
   const loadUserAddress = async () => {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-    if (!user) {
-      toast.error("กรุณาเข้าสู่ระบบ");
-      return false;
-    }
+  if (!user) {
+    toast.error("กรุณาเข้าสู่ระบบ");
+    return false;
+  }
 
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("address")
-      .eq("id", user.id)
-      .maybeSingle();
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("full_name, phone, address")
+    .eq("id", user.id)
+    .maybeSingle();
 
-    if (error) {
-      toast.error("โหลดที่อยู่ไม่สำเร็จ");
-      return false;
-    }
+  if (error) {
+    toast.error("โหลดที่อยู่ไม่สำเร็จ");
+    return false;
+  }
 
-    if (data?.address) {
-      setSavedAddress(data.address);
-      setAddressType("saved");
-    } else {
-      setSavedAddress(null);
-      setAddressType("new");
-    }
+  if (data?.address) {
+    setSavedFullName(data.full_name || null);
+    setSavedPhone(data.phone || null);
+    setSavedAddress(data.address);
+    setAddressType("saved");
+  } else {
+    setSavedAddress(null);
+    setAddressType("new");
+  }
 
-    return true;
-  };
+  return true;
+};
+
 
   /* ---------- Reserve ---------- */
 
@@ -156,9 +163,14 @@ const ProductDetail = () => {
   if (!product) return;
 
   if (quantity > product.available_quantity) {
-    toast.error("จำนวนที่จองเกินกว่าสินค้าที่มี");
-    return;
-  }
+  toast.error("จำนวนเกินสต็อกที่มีอยู่");
+  return;
+}
+
+  if (quantity <= 0) {
+  toast.error("จำนวนต้องมากกว่า 0");
+  return;
+}
 
   if (addressType === "new") {
     if (!receiverName.trim()) {
@@ -189,19 +201,26 @@ const ProductDetail = () => {
     return;
   }
 
-  const { error } = await supabase.rpc("reserve_v4", {
-    p_product_id: product.id,
-    p_user_id: user.id,
-    p_quantity: quantity,
-    p_note: note || "",
-    p_use_profile: addressType === "saved",
-    p_receiver_name: addressType === "new" ? receiverName : null,
-    p_receiver_phone: addressType === "new" ? receiverPhone : null,
-    p_delivery_address: addressType === "new" ? newAddress : null
-  });
+  const useProfile = addressType === "saved";
+
+const deliveryAddress =
+  useProfile ? savedAddress : newAddress;
+
+const { error } = await supabase.rpc("reserve_v5", {
+  p_product_id: product.id,
+  p_quantity: quantity,
+  p_note: note,
+  p_use_profile: useProfile,
+  p_receiver_name: receiverName,
+  p_receiver_phone: receiverPhone,
+  p_delivery_address: deliveryAddress,
+});
 
   if (error) {
-    toast.error(error.message || "จองสินค้าไม่สำเร็จ");
+    toast.error(
+  error.message?.includes("สินค้าในสต็อกไม่เพียงพอ")
+    ? "สินค้าในสต็อกไม่เพียงพอ"
+    : "จองสินค้าไม่สำเร็จ" );
   } else {
     toast.success("จองสินค้าเรียบร้อย");
     setOpenReserve(false);
@@ -292,7 +311,10 @@ const ProductDetail = () => {
             <Button
               size="lg"
               className="w-full"
-              disabled={product.available_quantity <= 0}
+              disabled={
+                product.available_quantity <= 0 ||
+                quantity > product.available_quantity
+              }
               onClick={handleOpenReserve}
             >
               จองสินค้า
@@ -363,10 +385,13 @@ const ProductDetail = () => {
               </div>
 
               {addressType === "saved" && savedAddress && (
-                <Card className="p-3 text-sm bg-muted">
-                  {savedAddress}
+                <Card className="p-3 text-sm bg-muted space-y-1">
+                  <p>ชื่อผู้รับ : {savedFullName || "-"}</p>
+                  <p>เบอร์โทร : {savedPhone || "-"}</p>
+                  <p>ที่อยู่ : {savedAddress}</p>
                 </Card>
               )}
+
 
               <div className="flex items-center space-x-2 mt-2">
                 <RadioGroupItem value="new" id="new" />
